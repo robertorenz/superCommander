@@ -639,26 +639,7 @@ public sealed class MainViewModel : ObservableObject
                 okText: move ? "Move" : "Download");
             if (string.IsNullOrWhiteSpace(answer)) return;
 
-            try
-            {
-                Directory.CreateDirectory(answer);
-            }
-            catch (Exception ex)
-            {
-                MessageDialog.ShowError(_window, "Download", ex.Message);
-                return;
-            }
-
-            var session = source.Ftp!;
-            var result = await RunProgressAsync(move ? "Moving from server" : "Downloading",
-                (progress, resolve, token) =>
-                    FtpTransferService.DownloadAsync(session, selection, answer, progress, resolve, token));
-
-            if (move && result.Failed == 0 && !result.Cancelled)
-            {
-                var errors = await session.DeleteAsync(selection, CancellationToken.None);
-                foreach (var error in errors) result.Errors.Add(error);
-            }
+            var result = await DownloadFromServerAsync(source, selection, answer, move);
 
             await source.ReloadAsync();
             await target.ReloadAsync();
@@ -667,27 +648,64 @@ public sealed class MainViewModel : ObservableObject
         }
 
         // Local -> server
-        var remoteSession = target.Ftp!;
         var remoteAnswer = InputDialog.Show(_window, move ? "Move to server" : "Upload",
-            $"{(move ? "Move" : "Upload")} {selection.Count} item(s) to:", remoteSession.CurrentPath,
+            $"{(move ? "Move" : "Upload")} {selection.Count} item(s) to:", target.Ftp!.CurrentPath,
             okText: move ? "Move" : "Upload");
         if (string.IsNullOrWhiteSpace(remoteAnswer)) return;
 
-        var paths = selection.Select(i => i.FullPath).ToList();
-        var uploadResult = await RunProgressAsync(move ? "Moving to server" : "Uploading",
-            (progress, resolve, token) =>
-                FtpTransferService.UploadAsync(remoteSession, paths,
-                    FtpPath.Normalise(remoteAnswer), progress, resolve, token));
-
-        if (move && uploadResult.Failed == 0 && !uploadResult.Cancelled)
-        {
-            await Task.Run(() => FileOperationService.Delete(WindowHandle, paths,
-                permanent: false, confirm: false));
-        }
+        var uploadResult = await UploadToServerAsync(target,
+            selection.Select(i => i.FullPath).ToList(), remoteAnswer, move);
 
         await source.ReloadAsync();
         await target.ReloadAsync();
         ReportResult(move ? "Move" : "Upload", uploadResult);
+    }
+
+    /// <summary>Pulls remote rows into a local folder, removing them after a move.</summary>
+    private async Task<FileOperationResult> DownloadFromServerAsync(FilePaneViewModel source,
+        IReadOnlyList<FileItem> items, string destination, bool move)
+    {
+        try
+        {
+            Directory.CreateDirectory(destination);
+        }
+        catch (Exception ex)
+        {
+            MessageDialog.ShowError(_window, "Download", ex.Message);
+            return new FileOperationResult { Failed = 1 };
+        }
+
+        var session = source.Ftp!;
+        var result = await RunProgressAsync(move ? "Moving from server" : "Downloading",
+            (progress, resolve, token) =>
+                FtpTransferService.DownloadAsync(session, items, destination, progress, resolve, token));
+
+        if (move && result.Failed == 0 && !result.Cancelled)
+            foreach (var error in await session.DeleteAsync(items, CancellationToken.None))
+                result.Errors.Add(error);
+
+        return result;
+    }
+
+    /// <summary>Pushes local paths to the server, removing them after a move.</summary>
+    private async Task<FileOperationResult> UploadToServerAsync(FilePaneViewModel target,
+        IReadOnlyList<string> paths, string destination, bool move)
+    {
+        var session = target.Ftp!;
+        var result = await RunProgressAsync(move ? "Moving to server" : "Uploading",
+            (progress, resolve, token) =>
+                FtpTransferService.UploadAsync(session, paths, FtpPath.Normalise(destination),
+                    progress, resolve, token));
+
+        if (move && result.Failed == 0 && !result.Cancelled)
+        {
+            var removed = await FileOperationService.DeleteAsync(WindowHandle, paths,
+                permanent: false, confirm: false);
+
+            if (!removed.Succeeded && removed.Error is not null) result.Errors.Add(removed.Error);
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -908,10 +926,12 @@ public sealed class MainViewModel : ObservableObject
         }
 
         var paths = selection.Select(i => i.FullPath).ToList();
+        DeleteOutcome outcome;
+
         SetBusy(true);
         try
         {
-            await Task.Run(() => FileOperationService.Delete(WindowHandle, paths, !toRecycleBin, confirm: false));
+            outcome = await FileOperationService.DeleteAsync(WindowHandle, paths, !toRecycleBin, confirm: false);
         }
         finally
         {
@@ -920,6 +940,9 @@ public sealed class MainViewModel : ObservableObject
 
         await ActivePane.ReloadAsync();
         await InactivePane.ReloadAsync();
+
+        if (!outcome.Succeeded)
+            MessageDialog.ShowError(_window, "Delete", "The items could not be deleted.", outcome.Error);
     }
 
     // -------------------------------------------------------------- archives
@@ -1090,13 +1113,69 @@ public sealed class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Drop handler for files dragged in from Explorer or the other pane.
+    /// Drop that started in one of our own panels. Routes to a download, an
+    /// upload or a local copy depending on which side holds an FTP session.
     /// <paramref name="targetDirectory"/> is set when the drop landed on a folder row.
     /// </summary>
-    public async Task DropAsync(FilePaneViewModel target, IReadOnlyList<string> paths, bool move,
-        string? targetDirectory = null)
+    public async Task DropFromPaneAsync(FilePaneViewModel source, FilePaneViewModel target,
+        IReadOnlyList<FileItem> items, bool move, string? targetDirectory = null)
+    {
+        if (items.Count == 0 || target.IsArchiveMode || ReferenceEquals(source, target)) return;
+
+        if (source.IsFtpMode && target.IsFtpMode)
+        {
+            MessageDialog.ShowInfo(_window, "FTP",
+                "Copying directly between two servers is not supported. Download to a local folder first.");
+            return;
+        }
+
+        SetActivePane(target);
+
+        FileOperationResult result;
+        string caption;
+
+        if (source.IsFtpMode)
+        {
+            caption = move ? "Move" : "Download";
+            result = await DownloadFromServerAsync(source, items,
+                targetDirectory ?? target.CurrentPath, move);
+        }
+        else if (target.IsFtpMode)
+        {
+            caption = move ? "Move" : "Upload";
+            result = await UploadToServerAsync(target, items.Select(i => i.FullPath).ToList(),
+                targetDirectory ?? target.Ftp!.CurrentPath, move);
+        }
+        else
+        {
+            await DropExternalAsync(target, items.Select(i => i.FullPath).ToList(), move, targetDirectory);
+            return;
+        }
+
+        await source.ReloadAsync();
+        await target.ReloadAsync();
+        ReportResult(caption, result);
+    }
+
+    /// <summary>
+    /// Local paths dropped in - from Explorer, or from the other panel when both
+    /// are local. Uploads when the target holds a session.
+    /// </summary>
+    public async Task DropExternalAsync(FilePaneViewModel target, IReadOnlyList<string> paths,
+        bool move, string? targetDirectory = null)
     {
         if (paths.Count == 0 || target.IsArchiveMode) return;
+
+        if (target.IsFtpMode)
+        {
+            SetActivePane(target);
+            var uploaded = await UploadToServerAsync(target, paths,
+                targetDirectory ?? target.Ftp!.CurrentPath, move);
+
+            await target.ReloadAsync();
+            ReportResult(move ? "Move" : "Upload", uploaded);
+            return;
+        }
 
         var destination = targetDirectory ?? target.CurrentPath;
 

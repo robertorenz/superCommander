@@ -190,6 +190,10 @@ internal static class ShellServices
     /// <summary>
     /// Deletes through the shell so the items land in the recycle bin and the
     /// standard confirmation / undo semantics apply.
+    ///
+    /// Must run on an STA, COM-initialised thread. Called from a thread-pool
+    /// thread (which is MTA) SHFileOperation returns 0 having done nothing, so
+    /// the caller must use <see cref="RunOnStaThread"/>.
     /// </summary>
     internal static bool DeleteToRecycleBin(IntPtr hwnd, IReadOnlyList<string> paths, bool permanent, bool confirm)
     {
@@ -218,7 +222,44 @@ internal static class ShellServices
         };
 
         var result = SHFileOperation(ref op);
-        return result == 0 && !op.fAnyOperationsAborted;
+        if (result != 0 || op.fAnyOperationsAborted) return false;
+
+        // SHFileOperation reports success even when it silently did nothing, so
+        // confirm the items really are gone before believing it.
+        foreach (var path in paths)
+            if (File.Exists(path) || Directory.Exists(path)) return false;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Runs <paramref name="work"/> on a dedicated STA thread with COM
+    /// initialised, which is what the shell file APIs require.
+    /// </summary>
+    internal static Task<T> RunOnStaThread<T>(Func<T> work)
+    {
+        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                completion.SetResult(work());
+            }
+            catch (Exception ex)
+            {
+                completion.SetException(ex);
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "SuperCommander shell operation"
+        };
+
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        return completion.Task;
     }
 
     // -------------------------------------------------------------- clipboard

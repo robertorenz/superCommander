@@ -44,6 +44,12 @@ public sealed class FileOperationProgress
     public double TotalPercent => BytesTotal > 0 ? BytesDone * 100.0 / BytesTotal : 0;
 }
 
+public sealed class DeleteOutcome
+{
+    public bool Succeeded { get; init; }
+    public string? Error { get; init; }
+}
+
 public sealed class FileOperationResult
 {
     public int Succeeded { get; set; }
@@ -459,14 +465,36 @@ public sealed class FileOperationService
     // ----------------------------------------------------------------- delete
 
     /// <summary>
-    /// Deletes through the shell (recycle bin, undo, standard confirmations).
-    /// Falls back to a direct delete when the shell call is unavailable.
+    /// Deletes through the shell (recycle bin, undo, standard confirmations) on a
+    /// dedicated STA thread, because the shell file APIs do nothing on the MTA
+    /// thread-pool threads that Task.Run provides.
+    ///
+    /// Falls back to a direct delete when the shell call does not take effect -
+    /// but only for a permanent delete, since a silent bypass of the recycle bin
+    /// would be a nasty surprise.
     /// </summary>
-    public static bool Delete(IntPtr owner, IReadOnlyList<string> paths, bool permanent, bool confirm)
-    {
-        if (ShellServices.DeleteToRecycleBin(owner, paths, permanent, confirm)) return true;
+    public static Task<DeleteOutcome> DeleteAsync(IntPtr owner, IReadOnlyList<string> paths,
+        bool permanent, bool confirm) =>
+        ShellServices.RunOnStaThread(() => Delete(owner, paths, permanent, confirm));
 
-        bool allOk = true;
+    public static DeleteOutcome Delete(IntPtr owner, IReadOnlyList<string> paths, bool permanent, bool confirm)
+    {
+        if (paths.Count == 0) return new DeleteOutcome { Succeeded = true };
+
+        if (ShellServices.DeleteToRecycleBin(owner, paths, permanent, confirm))
+            return new DeleteOutcome { Succeeded = true };
+
+        if (!permanent)
+        {
+            return new DeleteOutcome
+            {
+                Succeeded = false,
+                Error = "The Recycle Bin could not accept these items. " +
+                        "Use Shift+Delete to remove them permanently."
+            };
+        }
+
+        var errors = new List<string>();
         foreach (var path in paths)
         {
             try
@@ -474,11 +502,16 @@ public sealed class FileOperationService
                 if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
                 else if (File.Exists(path)) DeleteFile(path);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                allOk = false;
+                errors.Add($"{path}: {ex.Message}");
             }
         }
-        return allOk;
+
+        return new DeleteOutcome
+        {
+            Succeeded = errors.Count == 0,
+            Error = errors.Count == 0 ? null : string.Join(Environment.NewLine, errors)
+        };
     }
 }

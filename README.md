@@ -47,14 +47,20 @@ is the base framework plus direct Win32/COM interop.
 - The native **property sheet** on `Alt+Enter`.
 - **Explorer-compatible clipboard** (`Preferred DropEffect`), so `Ctrl+X` here and
   `Ctrl+V` in Explorer behaves the way you expect.
-- **Drag and drop** to and from Explorer and between panes, with Explorer's own
-  rule for the default effect (move within a volume, copy across volumes) and
-  `Ctrl` / `Shift` to force one.
+- **Drag and drop** to and from Explorer and between panels. A drag that starts
+  in a panel carries the rows themselves, not just paths, so dropping onto an FTP
+  panel uploads and dragging off one downloads. Explorer's rule sets the default
+  effect locally (move within a volume, copy across volumes); anything crossing
+  to or from a server defaults to copy so a mistake cannot delete the original.
+  `Ctrl` / `Shift` force copy or move.
 
 ### File operations
 
 - Threaded copy / move engine with byte-level progress, live throughput and ETA,
   and cancellation that leaves no half-written file behind.
+- Deletes run on a dedicated STA thread, which the shell file APIs require, and
+  the result is verified rather than trusted - `SHFileOperation` reports success
+  even when it silently did nothing.
 - Full conflict dialog — Overwrite, Overwrite all, Overwrite older, Skip, Skip all,
   Keep both, Cancel — showing both sizes and dates with the newer one highlighted.
 - Same-volume moves are a rename, so they are instant.

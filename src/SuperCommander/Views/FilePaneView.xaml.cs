@@ -412,10 +412,20 @@ public partial class FilePaneView : UserControl
         _dragArmed = false;
         if (_vm.IsArchiveMode) return;
 
-        var paths = _vm.EffectivePaths;
-        if (paths.Count == 0) return;
+        var selection = _vm.EffectiveSelection;
+        if (selection.Count == 0) return;
 
-        var data = new DataObject(DataFormats.FileDrop, paths.ToArray());
+        var data = new DataObject();
+        data.SetData(PaneDragData.Format, new PaneDragData
+        {
+            Source = _vm,
+            Items = selection.ToList()
+        });
+
+        // Only rows that exist on disk can be handed to Explorer.
+        if (!_vm.IsFtpMode)
+            data.SetData(DataFormats.FileDrop, selection.Select(i => i.FullPath).ToArray());
+
         DragDrop.DoDragDrop(List, data, DragDropEffects.Copy | DragDropEffects.Move);
     }
 
@@ -464,50 +474,86 @@ public partial class FilePaneView : UserControl
 
     private void OnListDragOver(object sender, DragEventArgs e)
     {
-        if (_vm is null || _vm.IsArchiveMode || !e.Data.GetDataPresent(DataFormats.FileDrop))
-        {
-            e.Effects = DragDropEffects.None;
-            e.Handled = true;
-            return;
-        }
-
         e.Effects = ResolveDropEffect(e);
         e.Handled = true;
     }
 
+    /// <summary>
+    /// Decides whether this drop is allowed and whether it copies or moves.
+    /// Returns None when the combination makes no sense, which is what stops the
+    /// drop cursor appearing.
+    /// </summary>
     private DragDropEffects ResolveDropEffect(DragEventArgs e)
+    {
+        if (_vm is null || _vm.IsArchiveMode) return DragDropEffects.None;
+
+        if (e.Data.GetDataPresent(PaneDragData.Format) &&
+            e.Data.GetData(PaneDragData.Format) is PaneDragData payload)
+        {
+            if (ReferenceEquals(payload.Source, _vm)) return DragDropEffects.None;
+
+            // Server to server would mean routing every byte through this machine
+            // twice; download to a local folder first.
+            if (payload.IsRemote && _vm.IsFtpMode) return DragDropEffects.None;
+
+            return Modifier(e) ?? DefaultEffect(payload.IsRemote || _vm.IsFtpMode,
+                payload.IsRemote ? null : payload.Items.FirstOrDefault()?.FullPath);
+        }
+
+        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            // Dropped in from Explorer: uploading is fine, so is a local copy.
+            var files = e.Data.GetData(DataFormats.FileDrop) as string[];
+            return Modifier(e) ?? DefaultEffect(_vm.IsFtpMode, files?.FirstOrDefault());
+        }
+
+        return DragDropEffects.None;
+    }
+
+    private static DragDropEffects? Modifier(DragEventArgs e)
     {
         if ((e.KeyStates & DragDropKeyStates.ControlKey) != 0) return DragDropEffects.Copy;
         if ((e.KeyStates & DragDropKeyStates.ShiftKey) != 0) return DragDropEffects.Move;
+        return null;
+    }
 
-        // Same volume defaults to move, across volumes to copy - Explorer's rule.
-        if (e.Data.GetData(DataFormats.FileDrop) is string[] { Length: > 0 } files && _vm is not null)
-        {
-            var sourceRoot = Path.GetPathRoot(files[0]);
-            var targetRoot = Path.GetPathRoot(_vm.CurrentPath);
-            if (string.Equals(sourceRoot, targetRoot, StringComparison.OrdinalIgnoreCase))
-                return DragDropEffects.Move;
-        }
+    private DragDropEffects DefaultEffect(bool crossesNetwork, string? sourcePath)
+    {
+        // Anything involving a server defaults to copy - an accidental move would
+        // delete the original after an upload.
+        if (crossesNetwork || sourcePath is null) return DragDropEffects.Copy;
 
-        return DragDropEffects.Copy;
+        // Explorer's rule for local drops: same volume moves, across volumes copies.
+        var sourceRoot = Path.GetPathRoot(sourcePath);
+        var targetRoot = Path.GetPathRoot(_vm!.CurrentPath);
+        return string.Equals(sourceRoot, targetRoot, StringComparison.OrdinalIgnoreCase)
+            ? DragDropEffects.Move
+            : DragDropEffects.Copy;
     }
 
     private void OnListDrop(object sender, DragEventArgs e)
     {
         if (_vm is null || Main is null) return;
-        if (e.Data.GetData(DataFormats.FileDrop) is not string[] files || files.Length == 0) return;
+
+        var effect = ResolveDropEffect(e);
+        if (effect == DragDropEffects.None) return;
 
         e.Handled = true;
-        bool move = ResolveDropEffect(e) == DragDropEffects.Move;
+        bool move = effect == DragDropEffects.Move;
 
-        // A drop onto a folder row targets that folder.
-        var row = GetRowUnderMouse(e);
-        if (row?.DataContext is FileItem { IsDirectory: true, IsParent: false } folder)
+        // A drop onto a folder row targets that folder rather than the panel.
+        string? folder = null;
+        if (GetRowUnderMouse(e)?.DataContext is FileItem { IsDirectory: true, IsParent: false } row)
+            folder = _vm.IsFtpMode ? row.RemotePath : row.FullPath;
+
+        if (e.Data.GetDataPresent(PaneDragData.Format) &&
+            e.Data.GetData(PaneDragData.Format) is PaneDragData payload)
         {
-            _ = Main.DropAsync(_vm, files, move, folder.FullPath);
+            _ = Main.DropFromPaneAsync(payload.Source, _vm, payload.Items, move, folder);
             return;
         }
 
-        _ = Main.DropAsync(_vm, files, move);
+        if (e.Data.GetData(DataFormats.FileDrop) is string[] { Length: > 0 } files)
+            _ = Main.DropExternalAsync(_vm, files, move, folder);
     }
 }
