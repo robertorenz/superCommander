@@ -6,6 +6,7 @@ using System.Windows.Threading;
 using SuperCommander.Interop;
 using SuperCommander.Models;
 using SuperCommander.Services;
+using SuperCommander.Services.Ftp;
 
 namespace SuperCommander.ViewModels;
 
@@ -24,6 +25,11 @@ public sealed class PaneTab : ObservableObject
             if (SetProperty(ref _path, value)) OnPropertyChanged(nameof(Title));
         }
     }
+
+    /// <summary>Live FTP connection when this tab is showing a remote server.</summary>
+    public FtpSession? Ftp { get; set; }
+
+    public bool IsFtp => Ftp is not null;
 
     /// <summary>Set while browsing inside a .zip.</summary>
     public string? ArchivePath { get; set; }
@@ -61,14 +67,18 @@ public sealed class PaneTab : ObservableObject
     {
         get
         {
-            var name = IsArchive
-                ? System.IO.Path.GetFileName(ArchivePath)
-                : System.IO.Path.GetFileName(Path.TrimEnd(System.IO.Path.DirectorySeparatorChar));
+            string? name;
+            if (IsFtp) name = Ftp!.Site.Display;
+            else if (IsArchive) name = System.IO.Path.GetFileName(ArchivePath);
+            else name = System.IO.Path.GetFileName(Path.TrimEnd(System.IO.Path.DirectorySeparatorChar));
 
             if (string.IsNullOrEmpty(name)) name = Path;
             return IsLocked ? "* " + name : name;
         }
     }
+
+    /// <summary>Refreshes the tab caption after connecting or disconnecting.</summary>
+    public void RaiseTitleChanged() => OnPropertyChanged(nameof(Title));
 }
 
 /// <summary>
@@ -168,10 +178,16 @@ public sealed class FilePaneViewModel : ObservableObject
 
     public bool IsArchiveMode => ActiveTab.IsArchive;
 
+    public bool IsFtpMode => ActiveTab.IsFtp;
+
+    public FtpSession? Ftp => ActiveTab.Ftp;
+
     public string DisplayPath
     {
         get
         {
+            if (ActiveTab.IsFtp) return ActiveTab.Ftp!.DisplayPath;
+
             if (!ActiveTab.IsArchive) return ActiveTab.Path;
             var inner = ActiveTab.ArchiveInternalPath.Replace('/', Path.DirectorySeparatorChar);
             return inner.Length == 0
@@ -237,6 +253,8 @@ public sealed class FilePaneViewModel : ObservableObject
 
     public PaneSettings CaptureSettings() => new()
     {
+        // Tab.Path stays local even while connected, so sessions are not restored
+        // as bogus local folders on the next launch.
         TabPaths = Tabs.Select(t => t.Path).ToList(),
         ActiveTab = Math.Max(0, Tabs.IndexOf(ActiveTab)),
         Sort = new SortSpec { Column = ActiveTab.Sort.Column, Descending = ActiveTab.Sort.Descending }
@@ -286,6 +304,13 @@ public sealed class FilePaneViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(path)) return;
 
+        // While a tab holds an FTP session every path is a remote one.
+        if (ActiveTab.IsFtp)
+        {
+            await NavigateFtpAsync(path, cursorName);
+            return;
+        }
+
         try
         {
             path = Path.GetFullPath(path);
@@ -328,6 +353,22 @@ public sealed class FilePaneViewModel : ObservableObject
 
     public async Task GoUpAsync()
     {
+        if (ActiveTab.IsFtp)
+        {
+            var session = ActiveTab.Ftp!;
+            var remoteCurrent = session.CurrentPath;
+
+            // ".." at the server root closes the connection.
+            if (remoteCurrent is "/" or "")
+            {
+                await DisconnectFtpAsync();
+                return;
+            }
+
+            await NavigateFtpAsync(FtpPath.GetParent(remoteCurrent), FtpPath.GetName(remoteCurrent));
+            return;
+        }
+
         if (ActiveTab.IsArchive)
         {
             if (ActiveTab.ArchiveInternalPath.Length == 0)
@@ -397,6 +438,16 @@ public sealed class FilePaneViewModel : ObservableObject
             return true;
         }
 
+        if (ActiveTab.IsFtp)
+        {
+            if (item.IsDirectory && item.RemotePath is not null)
+            {
+                await NavigateFtpAsync(item.RemotePath);
+                return true;
+            }
+            return false; // a remote file is opened by MainViewModel
+        }
+
         if (ActiveTab.IsArchive)
         {
             if (item.IsDirectory && item.ArchiveEntryPath is not null)
@@ -437,6 +488,121 @@ public sealed class FilePaneViewModel : ObservableObject
         PathChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    // ------------------------------------------------------------------- FTP
+
+    /// <summary>
+    /// Opens an FTP session on this tab. The tab keeps its local path so that
+    /// disconnecting returns to where the user was.
+    /// </summary>
+    public async Task ConnectFtpAsync(FtpSite site)
+    {
+        await DisconnectFtpAsync(reload: false);
+
+        var session = new FtpSession(site);
+        IsLoading = true;
+        ErrorText = string.Empty;
+
+        try
+        {
+            await session.ConnectAsync();
+        }
+        catch (Exception ex)
+        {
+            IsLoading = false;
+
+            // Keep the protocol log readable by the caller before tearing down.
+            LastFtpLog = string.Join(Environment.NewLine, session.Client.Log.TakeLast(40));
+            await session.DisposeAsync();
+
+            throw new FtpException(ex.Message);
+        }
+
+        ActiveTab.Ftp = session;
+        ActiveTab.BranchView = false;
+        ActiveTab.ArchivePath = null;
+        ActiveTab.CursorName = null;
+        ActiveTab.RaiseTitleChanged();
+
+        OnPropertyChanged(nameof(IsFtpMode));
+        OnPropertyChanged(nameof(Ftp));
+        OnPropertyChanged(nameof(DisplayPath));
+
+        await ReloadAsync();
+        PathChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Protocol trace from the most recent failed connection attempt.</summary>
+    public string LastFtpLog { get; private set; } = string.Empty;
+
+    public async Task DisconnectFtpAsync(bool reload = true)
+    {
+        var session = ActiveTab.Ftp;
+        if (session is null) return;
+
+        ActiveTab.Ftp = null;
+        ActiveTab.CursorName = null;
+        ActiveTab.RaiseTitleChanged();
+
+        try
+        {
+            await session.DisposeAsync();
+        }
+        catch (Exception)
+        {
+            // The connection is being abandoned either way.
+        }
+
+        OnPropertyChanged(nameof(IsFtpMode));
+        OnPropertyChanged(nameof(Ftp));
+        OnPropertyChanged(nameof(DisplayPath));
+
+        if (reload)
+        {
+            await ReloadAsync();
+            PathChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public async Task NavigateFtpAsync(string remotePath, string? cursorName = null)
+    {
+        if (ActiveTab.Ftp is null) return;
+
+        ActiveTab.CursorName = cursorName;
+        var normalised = FtpPath.Normalise(remotePath);
+
+        IsLoading = true;
+        try
+        {
+            var items = await ActiveTab.Ftp.ListAsync(normalised);
+            ApplyRemoteListing(items, cursorName);
+            ErrorText = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            ErrorText = ex.Message;
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+
+        OnPropertyChanged(nameof(DisplayPath));
+        PathChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void ApplyRemoteListing(List<FileItem> items, string? cursorName)
+    {
+        DirectoryService.Sort(items, ActiveTab.Sort, _settings.Current.DirectoriesFirst);
+
+        _allItems.Clear();
+        _allItems.AddRange(items);
+        ApplyFilter();
+        RestoreCursor(cursorName);
+        UpdateFreeSpace();
+
+        if (_settings.Current.ShowIcons) StartIconLoad(items);
+    }
+
     public async Task ToggleBranchViewAsync()
     {
         if (ActiveTab.IsArchive) return;
@@ -468,7 +634,12 @@ public sealed class FilePaneViewModel : ObservableObject
             List<FileItem> items;
             string? error = null;
 
-            if (ActiveTab.IsArchive)
+            if (ActiveTab.IsFtp)
+            {
+                var session = ActiveTab.Ftp!;
+                items = await session.ListAsync(session.CurrentPath, token);
+            }
+            else if (ActiveTab.IsArchive)
             {
                 var zip = ActiveTab.ArchivePath!;
                 var inner = ActiveTab.ArchiveInternalPath;
@@ -803,6 +974,12 @@ public sealed class FilePaneViewModel : ObservableObject
 
     private void UpdateFreeSpace()
     {
+        if (ActiveTab.IsFtp)
+        {
+            FreeSpaceText = ActiveTab.Ftp!.Site.Summary;
+            return;
+        }
+
         if (ActiveTab.IsArchive)
         {
             FreeSpaceText = "archive";

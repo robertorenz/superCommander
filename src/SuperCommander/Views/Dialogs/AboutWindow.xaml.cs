@@ -21,7 +21,9 @@ public partial class AboutWindow : ThemedWindow
             ("Ctrl+T / Ctrl+W", "New tab / close tab"),
             ("Ctrl+Tab", "Next tab"),
             ("Ctrl+B", "Branch view (all files in subfolders)"),
-            ("Ctrl+D", "Bookmarks")
+            ("Ctrl+D", "Bookmarks"),
+            ("Ctrl+F", "Connect to an FTP server"),
+            ("Ctrl+Shift+F", "Disconnect from the server")
         }),
         ("FILE COMMANDS", new[]
         {

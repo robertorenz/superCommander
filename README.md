@@ -76,6 +76,31 @@ is the base framework plus direct Win32/COM interop.
 | Bookmarks | `Ctrl+D` |
 | Command line with `cd` and drive-letter handling | bottom of the window |
 
+### FTP
+
+Either panel can hold a live FTP session while the other stays local, so `F5`
+copies between them in whichever direction makes sense.
+
+- **FTP and FTPS** — plain, explicit TLS (`AUTH TLS`, the usual choice) and
+  implicit TLS on port 990, with an opt-in per site for self-signed certificates.
+- Written directly on sockets. Not `FtpWebRequest`, which is obsolete from .NET 6
+  and cannot report byte-level progress; not a NuGet client, which would break the
+  zero-dependency property.
+- Prefers **MLSD** for machine-readable listings and falls back to parsing the
+  Unix and DOS shapes of **LIST** that older servers emit.
+- Passive mode (`EPSV`, then `PASV`), and the port from `PASV` is paired with the
+  host you actually reached — servers behind NAT routinely advertise a private
+  address there.
+- Browse, `F5` upload and download with the same progress dialog, throughput and
+  ETA as a local copy, `F6` move (transfer then remove the source), `F7` new
+  folder, `Shift+F6` rename, `F8` recursive delete, and `F3`/`Enter` on a remote
+  file fetches it to temp and opens it.
+- Saved sites live in `settings.json`; **passwords are stored as a DPAPI blob**
+  that only your Windows account can decrypt, never in the clear.
+
+`Ctrl+F` connects, `Ctrl+Shift+F` disconnects. `..` at the server root closes the
+session and returns the panel to where it was locally.
+
 Every dialog is a themed modal window — the app never calls `MessageBox`.
 
 <table>
@@ -126,6 +151,7 @@ Press `F1` in the app for this list at any time.
 | `Ctrl+Tab` | Next tab |
 | `Ctrl+B` | Branch view |
 | `Ctrl+D` | Add bookmark |
+| `Ctrl+F` / `Ctrl+Shift+F` | Connect to / disconnect from an FTP server |
 
 ### File commands
 
@@ -205,6 +231,7 @@ src/SuperCommander/
 ├── App.xaml(.cs)              Startup, theme bootstrap, crash logging
 ├── Interop/
 │   ├── NativeMethods.cs       P/Invoke and COM interface declarations
+│   ├── DataProtection.cs      DPAPI for saved FTP passwords
 │   ├── ShellContextMenu.cs    IContextMenu 1/2/3 with a window message hook
 │   └── ShellServices.cs       Icons, launching, recycle bin, clipboard, DWM
 ├── Models/
@@ -214,6 +241,10 @@ src/SuperCommander/
 │   ├── DirectoryService.cs    Listing, natural sort, folder sizes, branch view
 │   ├── FileOperationService.cs Threaded copy/move/delete with conflict callback
 │   ├── ArchiveService.cs      Zip browse, pack, unpack (zip-slip guarded)
+│   ├── Ftp/FtpClient.cs       FTP/FTPS over raw sockets, passive mode
+│   ├── Ftp/FtpListParser.cs   MLSD, plus Unix and DOS LIST fallbacks
+│   ├── Ftp/FtpSession.cs      One connection bound to a panel
+│   ├── Ftp/FtpTransferService.cs  Up/download on the local progress contract
 │   ├── SearchService.cs       Mask, metadata and content search
 │   ├── MultiRenameService.cs  Pattern expansion and preview
 │   ├── DriveService.cs        Drive enumeration
@@ -261,7 +292,8 @@ alongside the on-screen error dialog.
 - Archive **browsing, packing and unpacking is `.zip` only.** Other formats
   (`.7z`, `.rar`, …) are recognised and coloured as archives, and open with
   whichever application is registered for them.
-- No FTP or network plugin support.
+- FTP is FTP/FTPS only. There is no SFTP (that is SSH, a completely different
+  protocol) and no other network plugins.
 - The internal viewer loads the first 96 MB of very large files rather than
   streaming them.
 - Windows only, by design — it is built on the Windows shell.

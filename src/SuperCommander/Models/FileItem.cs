@@ -85,6 +85,15 @@ public sealed class FileItem : INotifyPropertyChanged
     /// </summary>
     public string? ArchiveEntryPath { get; set; }
 
+    /// <summary>
+    /// Absolute path on the FTP server when this row came from a remote listing.
+    /// Null for local rows.
+    /// </summary>
+    public string? RemotePath { get; set; }
+
+    /// <summary>True when this row lives on an FTP server rather than on disk.</summary>
+    public bool IsRemote => RemotePath is not null;
+
     // ------------------------------------------------------------- metadata
 
     public DateTime Modified { get; }

@@ -259,6 +259,14 @@ public partial class MainWindow : ThemedWindow
                 Vm.AddBookmarkCommand.Execute(null);
                 return true;
 
+            case Key.F when ctrl && shift:
+                Vm.FtpDisconnectCommand.Execute(null);
+                return true;
+
+            case Key.F when ctrl:
+                Vm.FtpConnectCommand.Execute(null);
+                return true;
+
             case Key.H when ctrl:
                 Vm.ToggleHiddenCommand.Execute(null);
                 return true;

@@ -6,6 +6,7 @@ using System.Windows.Interop;
 using SuperCommander.Interop;
 using SuperCommander.Models;
 using SuperCommander.Services;
+using SuperCommander.Services.Ftp;
 using SuperCommander.Views;
 using SuperCommander.Views.Dialogs;
 
@@ -40,6 +41,7 @@ public sealed class MainViewModel : ObservableObject
         RightPane.PathChanged += (_, _) => UpdateTitle();
 
         Bookmarks = new ObservableCollection<Bookmark>(settings.Current.Bookmarks);
+        FtpSites = new ObservableCollection<FtpSite>(settings.Current.FtpSites);
         CommandHistory = new ObservableCollection<string>(settings.Current.CommandHistory);
 
         BuildCommands();
@@ -68,6 +70,8 @@ public sealed class MainViewModel : ObservableObject
     public FilePaneViewModel InactivePane => ReferenceEquals(ActivePane, LeftPane) ? RightPane : LeftPane;
 
     public ObservableCollection<Bookmark> Bookmarks { get; }
+
+    public ObservableCollection<FtpSite> FtpSites { get; }
 
     public ObservableCollection<string> CommandHistory { get; }
 
@@ -117,6 +121,7 @@ public sealed class MainViewModel : ObservableObject
         settings.RightPane = RightPane.CaptureSettings();
         settings.Theme = ThemeService.Current;
         settings.Bookmarks = Bookmarks.ToList();
+        settings.FtpSites = FtpSites.ToList();
         settings.CommandHistory = CommandHistory.Take(50).ToList();
 
         if (_window is not null && _window.WindowState == WindowState.Normal)
@@ -189,6 +194,8 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand NavigateCommand { get; private set; } = null!;
     public RelayCommand QuickFilterCommand { get; private set; } = null!;
     public RelayCommand CopyNameToCommandLineCommand { get; private set; } = null!;
+    public RelayCommand FtpConnectCommand { get; private set; } = null!;
+    public RelayCommand FtpDisconnectCommand { get; private set; } = null!;
 
     private void BuildCommands()
     {
@@ -244,6 +251,8 @@ public sealed class MainViewModel : ObservableObject
             if (p is string path) _ = ActivePane.NavigateAsync(path);
         });
         QuickFilterCommand = new RelayCommand(() => _ = QuickFilterAsync());
+        FtpConnectCommand = new RelayCommand(() => _ = FtpConnectAsync());
+        FtpDisconnectCommand = new RelayCommand(() => _ = FtpDisconnectAsync());
         CopyNameToCommandLineCommand = new RelayCommand(p =>
         {
             var item = ActivePane.SelectedItem;
@@ -270,6 +279,26 @@ public sealed class MainViewModel : ObservableObject
         if (external && !string.IsNullOrWhiteSpace(viewer))
         {
             ShellServices.RunCommand($"\"{viewer}\" \"{item.FullPath}\"", ActivePane.CurrentPath);
+            return;
+        }
+
+        if (ActivePane.IsFtpMode)
+        {
+            var downloaded = await DownloadToTempAsync(ActivePane, item);
+            if (downloaded is null) return;
+
+            var temp = new FileItem(downloaded, item.Name, false, item.Size,
+                item.Modified, item.Created, System.IO.FileAttributes.Normal);
+
+            if (external && !string.IsNullOrWhiteSpace(viewer))
+            {
+                ShellServices.RunCommand($"\"{viewer}\" \"{downloaded}\"", Path.GetDirectoryName(downloaded)!);
+                return;
+            }
+
+            var remoteViewer = new ViewerWindow { Owner = _window };
+            remoteViewer.Load(temp);
+            remoteViewer.Show();
             return;
         }
 
@@ -318,6 +347,13 @@ public sealed class MainViewModel : ObservableObject
         {
             if (kind == FileOperationKind.Copy) await ExtractSelectionAsync(selection);
             else MessageDialog.ShowInfo(_window, "Move", "Files cannot be moved out of an archive.");
+            return;
+        }
+
+        // Either side on FTP means an upload or a download, not a local copy.
+        if (source.IsFtpMode || InactivePane.IsFtpMode)
+        {
+            await FtpTransferAsync(kind, source, InactivePane, selection);
             return;
         }
 
@@ -423,6 +459,215 @@ public sealed class MainViewModel : ObservableObject
         ReportResult(kind.ToString(), result);
     }
 
+    /// <summary>
+    /// Shows the progress dialog and runs <paramref name="action"/> against it,
+    /// handing it a progress sink and a conflict resolver marshalled to the UI.
+    /// </summary>
+    private async Task<FileOperationResult> RunProgressAsync(string caption,
+        Func<IProgress<FileOperationProgress>, Func<ConflictInfo, OverwriteAction>, CancellationToken,
+            Task<FileOperationResult>> action)
+    {
+        var dialog = new ProgressDialog { Owner = _window, Caption = caption };
+        using var cts = new CancellationTokenSource();
+        dialog.Cancelled += (_, _) => cts.Cancel();
+
+        var progress = new Progress<FileOperationProgress>(dialog.Update);
+        OverwriteAction Resolve(ConflictInfo info) =>
+            dialog.Dispatcher.Invoke(() => OverwriteDialog.Ask(dialog, info));
+
+        SetBusy(true);
+        dialog.Show();
+        try
+        {
+            return await action(progress, Resolve, cts.Token);
+        }
+        finally
+        {
+            dialog.Close();
+            SetBusy(false);
+        }
+    }
+
+    // -------------------------------------------------------------------- FTP
+
+    private async Task FtpConnectAsync()
+    {
+        var window = new FtpConnectWindow(FtpSites.ToList()) { Owner = _window };
+        bool connect = window.ShowDialog() == true;
+
+        // The dialog edits sites in place, so take its list back either way.
+        FtpSites.Clear();
+        foreach (var site in window.Sites) FtpSites.Add(site);
+        _settings.Current.FtpSites = FtpSites.ToList();
+        _settings.Save();
+
+        if (!connect || window.SelectedSite is null) return;
+
+        var target = ActivePane;
+        Exception? failure = null;
+
+        SetBusy(true);
+        try
+        {
+            await target.ConnectFtpAsync(window.SelectedSite);
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+
+        // Report only once the window is interactive again - a modal owned by a
+        // disabled window cannot be dismissed.
+        if (failure is not null)
+        {
+            LogFtp($"connect to {window.SelectedSite.Host}:{window.SelectedSite.Port} failed", failure);
+            MessageDialog.ShowError(_window, "FTP",
+                $"Could not connect to {window.SelectedSite.Host}.", failure.ToString());
+            return;
+        }
+
+        UpdateTitle();
+        target.RequestFocus();
+    }
+
+    /// <summary>Appends an FTP failure to the error log with the protocol trace.</summary>
+    private void LogFtp(string what, Exception ex)
+    {
+        try
+        {
+            var directory = _settings.DirectoryPath;
+            Directory.CreateDirectory(directory);
+
+            var trace = ActivePane.Ftp is { } session
+                ? string.Join(Environment.NewLine, session.Client.Log.TakeLast(40))
+                : ActivePane.LastFtpLog;
+
+            File.AppendAllText(Path.Combine(directory, "error.log"),
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] FTP {what}: {ex}{Environment.NewLine}" +
+                $"--- protocol ---{Environment.NewLine}{trace}{Environment.NewLine}{Environment.NewLine}");
+        }
+        catch (Exception)
+        {
+            // Diagnostics must never mask the original failure.
+        }
+    }
+
+    private async Task FtpDisconnectAsync()
+    {
+        if (!ActivePane.IsFtpMode)
+        {
+            MessageDialog.ShowInfo(_window, "FTP", "This panel is not connected to a server.");
+            return;
+        }
+
+        await ActivePane.DisconnectFtpAsync();
+        UpdateTitle();
+        ActivePane.RequestFocus();
+    }
+
+    /// <summary>Uploads or downloads depending on which pane holds the session.</summary>
+    private async Task FtpTransferAsync(FileOperationKind kind, FilePaneViewModel source,
+        FilePaneViewModel target, IReadOnlyList<FileItem> selection)
+    {
+        if (source.IsFtpMode && target.IsFtpMode)
+        {
+            MessageDialog.ShowInfo(_window, "FTP",
+                "Copying directly between two servers is not supported. Download to a local folder first.");
+            return;
+        }
+
+        bool move = kind == FileOperationKind.Move;
+
+        if (source.IsFtpMode)
+        {
+            var suggestion = target.IsFtpMode ? source.ActiveTab.Path : target.CurrentPath;
+            var answer = InputDialog.Show(_window, move ? "Move from server" : "Download",
+                $"{(move ? "Move" : "Download")} {selection.Count} item(s) to:", suggestion,
+                okText: move ? "Move" : "Download");
+            if (string.IsNullOrWhiteSpace(answer)) return;
+
+            try
+            {
+                Directory.CreateDirectory(answer);
+            }
+            catch (Exception ex)
+            {
+                MessageDialog.ShowError(_window, "Download", ex.Message);
+                return;
+            }
+
+            var session = source.Ftp!;
+            var result = await RunProgressAsync(move ? "Moving from server" : "Downloading",
+                (progress, resolve, token) =>
+                    FtpTransferService.DownloadAsync(session, selection, answer, progress, resolve, token));
+
+            if (move && result.Failed == 0 && !result.Cancelled)
+            {
+                var errors = await session.DeleteAsync(selection, CancellationToken.None);
+                foreach (var error in errors) result.Errors.Add(error);
+            }
+
+            await source.ReloadAsync();
+            await target.ReloadAsync();
+            ReportResult(move ? "Move" : "Download", result);
+            return;
+        }
+
+        // Local -> server
+        var remoteSession = target.Ftp!;
+        var remoteAnswer = InputDialog.Show(_window, move ? "Move to server" : "Upload",
+            $"{(move ? "Move" : "Upload")} {selection.Count} item(s) to:", remoteSession.CurrentPath,
+            okText: move ? "Move" : "Upload");
+        if (string.IsNullOrWhiteSpace(remoteAnswer)) return;
+
+        var paths = selection.Select(i => i.FullPath).ToList();
+        var uploadResult = await RunProgressAsync(move ? "Moving to server" : "Uploading",
+            (progress, resolve, token) =>
+                FtpTransferService.UploadAsync(remoteSession, paths,
+                    FtpPath.Normalise(remoteAnswer), progress, resolve, token));
+
+        if (move && uploadResult.Failed == 0 && !uploadResult.Cancelled)
+        {
+            await Task.Run(() => FileOperationService.Delete(WindowHandle, paths,
+                permanent: false, confirm: false));
+        }
+
+        await source.ReloadAsync();
+        await target.ReloadAsync();
+        ReportResult(move ? "Move" : "Upload", uploadResult);
+    }
+
+    /// <summary>
+    /// Pulls a remote file into the temp folder so the viewer or the shell can
+    /// open it. Returns null when the download failed.
+    /// </summary>
+    private async Task<string?> DownloadToTempAsync(FilePaneViewModel pane, FileItem item)
+    {
+        if (pane.Ftp is null || item.RemotePath is null) return null;
+
+        var folder = Path.Combine(Path.GetTempPath(), "SuperCommander", "ftp");
+        Directory.CreateDirectory(folder);
+        var local = Path.Combine(folder, item.Name);
+
+        var session = pane.Ftp;
+        var result = await RunProgressAsync($"Downloading {item.Name}",
+            (progress, _, token) =>
+                FtpTransferService.DownloadAsync(session, new[] { item }, folder, progress,
+                    _ => OverwriteAction.Overwrite, token));
+
+        if (result.Succeeded == 0 || !File.Exists(local))
+        {
+            ReportResult("Download", result);
+            return null;
+        }
+
+        return local;
+    }
+
     private async Task ExtractSelectionAsync(IReadOnlyList<FileItem> selection)
     {
         var zip = ActivePane.ActiveTab.ArchivePath!;
@@ -466,6 +711,26 @@ public sealed class MainViewModel : ObservableObject
         var item = ActivePane.SelectedItem;
         if (item is null || item.IsParent || ActivePane.IsArchiveMode) return;
 
+        if (ActivePane.IsFtpMode)
+        {
+            if (item.RemotePath is null) return;
+
+            var remoteName = InputDialog.Show(_window, "Rename", "New name:", item.Name,
+                okText: "Rename", selectFileNameOnly: true);
+            if (string.IsNullOrWhiteSpace(remoteName) || remoteName == item.Name) return;
+
+            try
+            {
+                await ActivePane.Ftp!.RenameAsync(item.RemotePath, remoteName.Trim());
+                await ActivePane.ReloadAsync();
+            }
+            catch (Exception ex)
+            {
+                MessageDialog.ShowError(_window, "Rename", ex.Message);
+            }
+            return;
+        }
+
         var answer = InputDialog.Show(_window, "Rename", "New name:", item.Name,
             okText: "Rename", selectFileNameOnly: true);
         if (answer is null || answer == item.Name) return;
@@ -486,6 +751,24 @@ public sealed class MainViewModel : ObservableObject
 
     private async Task MakeDirectoryAsync()
     {
+        if (ActivePane.IsFtpMode)
+        {
+            var remoteName = InputDialog.Show(_window, "New folder", "Create folder on the server:",
+                string.Empty, okText: "Create");
+            if (string.IsNullOrWhiteSpace(remoteName)) return;
+
+            try
+            {
+                await ActivePane.Ftp!.CreateDirectoryAsync(remoteName.Trim());
+                await ActivePane.ReloadAsync();
+            }
+            catch (Exception ex)
+            {
+                MessageDialog.ShowError(_window, "New folder", ex.Message);
+            }
+            return;
+        }
+
         if (ActivePane.IsArchiveMode)
         {
             MessageDialog.ShowInfo(_window, "New folder", "Folders cannot be created inside an archive.");
@@ -513,6 +796,40 @@ public sealed class MainViewModel : ObservableObject
 
     private async Task DeleteAsync(bool permanent)
     {
+        if (ActivePane.IsFtpMode)
+        {
+            var remoteSelection = ActivePane.EffectiveSelection;
+            if (remoteSelection.Count == 0) return;
+
+            var what = remoteSelection.Count == 1
+                ? $"\"{remoteSelection[0].Name}\""
+                : $"{remoteSelection.Count} selected items";
+
+            // There is no recycle bin on a server.
+            if (!MessageDialog.ShowConfirm(_window, "Delete",
+                    $"Permanently delete {what} from {ActivePane.Ftp!.Site.Host}? This cannot be undone.",
+                    okText: "Delete", danger: true))
+                return;
+
+            SetBusy(true);
+            List<string> errors;
+            try
+            {
+                errors = await ActivePane.Ftp.DeleteAsync(remoteSelection);
+            }
+            finally
+            {
+                SetBusy(false);
+            }
+
+            await ActivePane.ReloadAsync();
+
+            if (errors.Count > 0)
+                MessageDialog.ShowError(_window, "Delete", $"{errors.Count} item(s) could not be deleted.",
+                    string.Join(Environment.NewLine, errors.Take(50)));
+            return;
+        }
+
         if (ActivePane.IsArchiveMode)
         {
             MessageDialog.ShowInfo(_window, "Delete", "Deleting inside an archive is not supported.");
@@ -754,6 +1071,16 @@ public sealed class MainViewModel : ObservableObject
         SetActivePane(target);
         await RunFileOperationAsync(move ? FileOperationKind.Move : FileOperationKind.Copy,
             paths, destination, null);
+    }
+
+    /// <summary>Enter on a remote file: fetch it to temp, then hand it to the shell.</summary>
+    public async Task OpenRemoteAsync(FilePaneViewModel pane, FileItem item)
+    {
+        var downloaded = await DownloadToTempAsync(pane, item);
+        if (downloaded is null) return;
+
+        if (!ShellServices.Open(downloaded, Path.GetDirectoryName(downloaded)))
+            MessageDialog.ShowError(_window, "Open", $"Nothing is registered to open \"{item.Name}\".");
     }
 
     private void OpenTerminal() => ShellServices.RunCommand("", ActivePane.CurrentPath, keepOpen: true);

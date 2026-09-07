@@ -67,6 +67,9 @@ public sealed class AppSettings
     public string ExternalViewer { get; set; } = string.Empty;
 
     public List<Bookmark> Bookmarks { get; set; } = new();
+
+    /// <summary>Saved FTP connections. Passwords are stored DPAPI-protected.</summary>
+    public List<FtpSite> FtpSites { get; set; } = new();
     public List<string> CommandHistory { get; set; } = new();
     public List<string> DirectoryHistory { get; set; } = new();
 

@@ -269,7 +269,7 @@ public partial class FilePaneView : UserControl
             case Key.Enter:
                 e.Handled = true;
                 EndQuickSearch();
-                if (_vm.SelectedItem is not null) _ = _vm.EnterAsync(_vm.SelectedItem);
+                if (_vm.SelectedItem is not null) _ = ActivateAsync(_vm.SelectedItem);
                 break;
 
             case Key.Back:
@@ -362,7 +362,21 @@ public partial class FilePaneView : UserControl
         if (GetRowUnderMouse(e) is null) return;
 
         e.Handled = true;
-        _ = _vm.EnterAsync(_vm.SelectedItem);
+        _ = ActivateAsync(_vm.SelectedItem);
+    }
+
+    /// <summary>
+    /// Opens a row. Remote files need the view model to fetch them first, so the
+    /// pane defers to it when EnterAsync declines.
+    /// </summary>
+    private async Task ActivateAsync(FileItem item)
+    {
+        if (_vm is null) return;
+
+        if (await _vm.EnterAsync(item)) return;
+
+        if (_vm.IsFtpMode && !item.IsDirectory && Main is not null)
+            await Main.OpenRemoteAsync(_vm, item);
     }
 
     private void OnListMouseLeftDown(object sender, MouseButtonEventArgs e)

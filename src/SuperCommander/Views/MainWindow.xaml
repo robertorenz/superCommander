@@ -65,6 +65,11 @@
                     <MenuItem Header="S_wap panes" InputGestureText="Ctrl+U" Command="{Binding SwapPanesCommand}" />
                     <MenuItem Header="_Target = source" InputGestureText="Ctrl+Right" Command="{Binding TargetEqualsSourceCommand}" />
                     <Separator />
+                    <MenuItem Header="Connect to _FTP server..." InputGestureText="Ctrl+F"
+                              Command="{Binding FtpConnectCommand}" />
+                    <MenuItem Header="_Disconnect from server" InputGestureText="Ctrl+Shift+F"
+                              Command="{Binding FtpDisconnectCommand}" />
+                    <Separator />
                     <MenuItem Header="Open _terminal here" Command="{Binding OpenTerminalCommand}" />
                     <MenuItem Header="Show in _Explorer" Command="{Binding RevealInExplorerCommand}" />
                     <Separator />
