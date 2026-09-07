@@ -240,15 +240,15 @@ public sealed class MainViewModel : ObservableObject
         AddBookmarkCommand = new RelayCommand(AddBookmark);
         GoToBookmarkCommand = new RelayCommand(p =>
         {
-            if (p is Bookmark bookmark) _ = ActivePane.NavigateAsync(bookmark.Path);
-            else if (p is string path) _ = ActivePane.NavigateAsync(path);
+            if (p is Bookmark bookmark) _ = NavigateLocalAsync(ActivePane, bookmark.Path);
+            else if (p is string path) _ = NavigateLocalAsync(ActivePane, path);
         });
         SettingsCommand = new RelayCommand(OpenSettings);
         AboutCommand = new RelayCommand(ShowAbout);
         ExitCommand = new RelayCommand(() => _window?.Close());
         NavigateCommand = new RelayCommand(p =>
         {
-            if (p is string path) _ = ActivePane.NavigateAsync(path);
+            if (p is string path) _ = NavigateLocalAsync(ActivePane, path);
         });
         QuickFilterCommand = new RelayCommand(() => _ = QuickFilterAsync());
         FtpConnectCommand = new RelayCommand(() => _ = FtpConnectAsync());
@@ -554,6 +554,55 @@ public sealed class MainViewModel : ObservableObject
         {
             // Diagnostics must never mask the original failure.
         }
+    }
+
+    /// <summary>
+    /// Opens a local folder in a panel, offering to close an FTP session first
+    /// rather than silently doing nothing (drive buttons, bookmarks, path bar).
+    /// </summary>
+    public async Task NavigateLocalAsync(FilePaneViewModel pane, string path)
+    {
+        if (pane.IsFtpMode)
+        {
+            var host = pane.Ftp!.Site.Display;
+
+            if (!MessageDialog.ShowConfirm(_window, "Disconnect from server",
+                    $"This panel is connected to {host}.\n\nDisconnect and open {path}?",
+                    okText: "Disconnect", cancelText: "Stay connected"))
+                return;
+
+            await pane.DisconnectFtpAsync(reload: false);
+        }
+
+        SetActivePane(pane);
+        await pane.NavigateAsync(path);
+        UpdateTitle();
+    }
+
+    /// <summary>
+    /// Path bar entry. A remote path stays on the server; anything that looks
+    /// like a local path goes through the disconnect prompt.
+    /// </summary>
+    public async Task NavigateFromPathBarAsync(FilePaneViewModel pane, string text)
+    {
+        text = text.Trim();
+        if (text.Length == 0) return;
+
+        if (pane.IsFtpMode && !LooksLocal(text))
+        {
+            await pane.NavigateFtpAsync(text);
+            return;
+        }
+
+        await NavigateLocalAsync(pane, text);
+    }
+
+    /// <summary>True for "C:\...", "\\server\share" and "ftp://" is explicitly not.</summary>
+    private static bool LooksLocal(string path)
+    {
+        if (path.StartsWith("ftp://", StringComparison.OrdinalIgnoreCase)) return false;
+        if (path.StartsWith(@"\\", StringComparison.Ordinal)) return true;
+        return path.Length >= 2 && char.IsLetter(path[0]) && path[1] == ':';
     }
 
     private async Task FtpDisconnectAsync()

@@ -98,8 +98,14 @@ copies between them in whichever direction makes sense.
 - Saved sites live in `settings.json`; **passwords are stored as a DPAPI blob**
   that only your Windows account can decrypt, never in the clear.
 
+Each panel has its own **FTP button at the end of its drive row**. It opens the
+connection manager for that panel, turns accent-filled and reads `FTP ✕` while a
+session is open, and closes the session when clicked again.
+
 `Ctrl+F` connects, `Ctrl+Shift+F` disconnects. `..` at the server root closes the
-session and returns the panel to where it was locally.
+session and returns the panel to where it was locally. Clicking a drive letter,
+picking a bookmark or typing a local path while connected asks whether to
+disconnect first rather than quietly doing nothing.
 
 Every dialog is a themed modal window — the app never calls `MessageBox`.
 

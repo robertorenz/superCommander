@@ -341,8 +341,7 @@ public partial class MainWindow : ThemedWindow
             var root = drive.Root;
             item.Click += (_, _) =>
             {
-                Vm.SetActivePane(pane);
-                _ = pane.NavigateAsync(root);
+                _ = Vm.NavigateLocalAsync(pane, root);
                 view.FocusList();
             };
 

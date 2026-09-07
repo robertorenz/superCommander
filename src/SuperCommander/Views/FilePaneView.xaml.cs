@@ -192,12 +192,26 @@ public partial class FilePaneView : UserControl
 
     private void OnDriveClick(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: string root } && _vm is not null)
-        {
-            Main?.SetActivePane(_vm);
-            _ = _vm.NavigateAsync(root);
-            FocusList();
-        }
+        if (sender is not Button { Tag: string root } || _vm is null || Main is null) return;
+
+        // While connected this offers to close the session rather than ignoring
+        // the click, which just looked broken.
+        _ = Main.NavigateLocalAsync(_vm, root).ContinueWith(_ => FocusList(),
+            TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
+    /// <summary>
+    /// Connects this panel to a server, or disconnects it when it already holds
+    /// a session. Always targets its own panel, not whichever one was active.
+    /// </summary>
+    private void OnFtpButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (_vm is null || Main is null) return;
+
+        Main.SetActivePane(_vm);
+
+        if (_vm.IsFtpMode) Main.FtpDisconnectCommand.Execute(null);
+        else Main.FtpConnectCommand.Execute(null);
     }
 
     private void OnTabClick(object sender, MouseButtonEventArgs e)
@@ -234,7 +248,8 @@ public partial class FilePaneView : UserControl
         {
             case Key.Enter:
                 e.Handled = true;
-                _ = _vm.NavigateAsync(PathBox.Text.Trim());
+                if (Main is not null) _ = Main.NavigateFromPathBarAsync(_vm, PathBox.Text);
+                else _ = _vm.NavigateAsync(PathBox.Text.Trim());
                 FocusList();
                 break;
 

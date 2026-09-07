@@ -25,7 +25,13 @@
                     Background="{DynamicResource App.SurfaceAlt}"
                     BorderBrush="{DynamicResource App.Border}" BorderThickness="0,0,0,1">
                 <Grid>
-                    <ItemsControl ItemsSource="{Binding Drives}" HorizontalAlignment="Left">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <ItemsControl Grid.Column="0" ItemsSource="{Binding Drives}" HorizontalAlignment="Left">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <WrapPanel Orientation="Horizontal" />
@@ -42,9 +48,14 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center"
+                    <Button Grid.Column="1" x:Name="FtpButton"
+                            Style="{StaticResource SC.FtpButton}"
+                            Click="OnFtpButtonClick" />
+
+                    <TextBlock Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center"
                                Style="{StaticResource SC.Label.Muted}" FontSize="11"
-                               Text="{Binding FreeSpaceText}" Margin="8,0,2,0" />
+                               Text="{Binding FreeSpaceText}" Margin="8,0,2,0"
+                               TextTrimming="CharacterEllipsis" />
                 </Grid>
             </Border>
 

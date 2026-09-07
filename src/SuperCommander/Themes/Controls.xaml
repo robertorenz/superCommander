@@ -112,6 +112,23 @@
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
+    <!-- Sits at the end of the drive row; accented while a session is open -->
+    <Style x:Key="SC.FtpButton" TargetType="Button" BasedOn="{StaticResource SC.DriveButton}">
+        <Setter Property="Margin" Value="8,0,0,0" />
+        <Setter Property="MinWidth" Value="38" />
+        <Setter Property="Content" Value="FTP" />
+        <Setter Property="ToolTip" Value="Connect to an FTP server  (Ctrl+F)" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsFtpMode}" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Accent}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+                <Setter Property="Foreground" Value="{DynamicResource Accent.Text}" />
+                <Setter Property="Content" Value="FTP &#x2715;" />
+                <Setter Property="ToolTip" Value="Disconnect from the server  (Ctrl+Shift+F)" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
     <!-- Bottom function-key bar -->
     <Style x:Key="SC.FunctionKey" TargetType="Button" BasedOn="{StaticResource SC.Button}">
         <Setter Property="MinWidth" Value="0" />
