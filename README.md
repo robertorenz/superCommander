@@ -25,9 +25,11 @@ is the base framework plus direct Win32/COM interop.
 ### Two panes, the orthodox way
 
 - Independent panes, each with its own tab strip, drive bar, sort order and history.
-- **Cursor and marks are separate.** Arrow keys move the cursor; `Insert` / `Space`
-  mark files. Commands act on the marked set, or on the cursor row when nothing is
-  marked — exactly the Total Commander rule.
+- **Cursor and marks are separate.** Arrow keys move the cursor; `Insert`,
+  `Space`, `Ctrl+click` and `Shift+click` mark files. Commands act on the marked
+  set, or on the cursor row when nothing is marked — exactly the Total Commander
+  rule. Marking is additive, so a plain click never loses what you already
+  picked; `Esc` clears.
 - The cursor is drawn as an accent outline rather than a filled bar, so per-type
   colouring (folders, executables, archives, hidden files) and the marked colour
   stay readable underneath it.
@@ -185,6 +187,8 @@ Press `F1` in the app for this list at any time.
 
 | Keys | Action |
 | --- | --- |
+| `Ctrl+click` | Mark or unmark one file |
+| `Shift+click` | Mark everything between |
 | `Insert` | Mark and move down |
 | `Space` | Mark (and size the folder) |
 | `Ctrl+A` | Mark everything |

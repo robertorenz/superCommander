@@ -847,6 +847,26 @@ public sealed class FilePaneViewModel : ObservableObject
         UpdateStatus();
     }
 
+    /// <summary>
+    /// Marks every row between two positions inclusive. Additive: existing marks
+    /// outside the range are left alone, which matches the Insert/Space model.
+    /// </summary>
+    public void MarkRange(FileItem? anchor, FileItem target, bool marked = true)
+    {
+        int to = Items.IndexOf(target);
+        if (to < 0) return;
+
+        int from = anchor is null ? to : Items.IndexOf(anchor);
+        if (from < 0) from = to;
+
+        if (from > to) (from, to) = (to, from);
+
+        for (int i = from; i <= to; i++)
+            if (!Items[i].IsParent) Items[i].IsMarked = marked;
+
+        UpdateStatus();
+    }
+
     public void InvertMarks()
     {
         foreach (var item in Items)

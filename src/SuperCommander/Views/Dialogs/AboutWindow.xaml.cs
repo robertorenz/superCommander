@@ -45,6 +45,8 @@ public partial class AboutWindow : ThemedWindow
         }),
         ("SELECTION", new[]
         {
+            ("Ctrl+click", "Mark or unmark one file"),
+            ("Shift+click", "Mark everything between"),
             ("Insert", "Mark and move down"),
             ("Space", "Mark (folders also get their size)"),
             ("Ctrl+A", "Mark everything"),

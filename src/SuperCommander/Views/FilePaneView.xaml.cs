@@ -22,6 +22,7 @@ public partial class FilePaneView : UserControl
     private string _quickSearch = string.Empty;
     private Point _dragOrigin;
     private bool _dragArmed;
+    private FileItem? _markAnchor;
     private FilePaneViewModel? _vm;
 
     public FilePaneView()
@@ -295,6 +296,7 @@ public partial class FilePaneView : UserControl
 
             case Key.Insert:
                 e.Handled = true;
+                _markAnchor = _vm.SelectedItem;
                 MarkAndAdvance();
                 break;
 
@@ -397,7 +399,40 @@ public partial class FilePaneView : UserControl
     private void OnListMouseLeftDown(object sender, MouseButtonEventArgs e)
     {
         _dragOrigin = e.GetPosition(null);
-        _dragArmed = GetRowUnderMouse(e) is not null;
+
+        var row = GetRowUnderMouse(e);
+        _dragArmed = row is not null;
+
+        if (_vm is null || row?.DataContext is not FileItem item) return;
+
+        var modifiers = Keyboard.Modifiers;
+
+        // Ctrl+click toggles one row, Shift+click marks a run. Both move the
+        // cursor and suppress the drag so the click cannot become a drag.
+        if ((modifiers & ModifierKeys.Control) != 0)
+        {
+            _vm.ToggleMark(item);
+            _vm.SelectedItem = item;
+            _markAnchor = item;
+            _dragArmed = false;
+            row.Focus();
+            e.Handled = true;
+            return;
+        }
+
+        if ((modifiers & ModifierKeys.Shift) != 0)
+        {
+            _vm.MarkRange(_markAnchor ?? _vm.SelectedItem, item);
+            _vm.SelectedItem = item;
+            _dragArmed = false;
+            row.Focus();
+            e.Handled = true;
+            return;
+        }
+
+        // A plain click only moves the cursor; marks are left alone, which is
+        // what an orthodox file manager does.
+        _markAnchor = item;
     }
 
     private void OnListMouseMove(object sender, MouseEventArgs e)
