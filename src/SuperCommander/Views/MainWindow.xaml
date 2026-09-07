@@ -1,0 +1,177 @@
+<dlg:ThemedWindow x:Class="SuperCommander.Views.MainWindow"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:local="clr-namespace:SuperCommander.Views"
+                  xmlns:dlg="clr-namespace:SuperCommander.Views.Dialogs"
+                  xmlns:vm="clr-namespace:SuperCommander.ViewModels"
+                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                  mc:Ignorable="d"
+                  d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
+                  Title="{Binding Title}"
+                  Width="1280" Height="760"
+                  MinWidth="820" MinHeight="480"
+                  WindowStartupLocation="CenterScreen"
+                  PreviewKeyDown="OnWindowPreviewKeyDown">
+
+    <Grid Background="{DynamicResource App.Background}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ========================== Menu bar ========================== -->
+        <Border Grid.Row="0" Background="{DynamicResource App.SurfaceAlt}"
+                BorderBrush="{DynamicResource App.Border}" BorderThickness="0,0,0,1"
+                Padding="6,3">
+            <Menu Background="Transparent">
+                <MenuItem Header="_Files">
+                    <MenuItem Header="_View" InputGestureText="F3" Command="{Binding ViewCommand}" />
+                    <MenuItem Header="_Edit" InputGestureText="F4" Command="{Binding EditCommand}" />
+                    <Separator />
+                    <MenuItem Header="_Copy..." InputGestureText="F5" Command="{Binding CopyCommand}" />
+                    <MenuItem Header="_Move / rename..." InputGestureText="F6" Command="{Binding MoveCommand}" />
+                    <MenuItem Header="Rename in _place" InputGestureText="Shift+F6" Command="{Binding RenameCommand}" />
+                    <MenuItem Header="_New folder..." InputGestureText="F7" Command="{Binding MakeDirectoryCommand}" />
+                    <MenuItem Header="_Delete" InputGestureText="F8" Command="{Binding DeleteCommand}" />
+                    <Separator />
+                    <MenuItem Header="_Pack into .zip..." InputGestureText="Alt+F5" Command="{Binding PackCommand}" />
+                    <MenuItem Header="_Unpack archive..." InputGestureText="Alt+F9" Command="{Binding UnpackCommand}" />
+                    <Separator />
+                    <MenuItem Header="Multi-_rename tool..." InputGestureText="Ctrl+M" Command="{Binding MultiRenameCommand}" />
+                    <MenuItem Header="P_roperties" InputGestureText="Alt+Enter" Command="{Binding PropertiesCommand}" />
+                    <Separator />
+                    <MenuItem Header="E_xit" InputGestureText="Alt+F4" Command="{Binding ExitCommand}" />
+                </MenuItem>
+
+                <MenuItem Header="_Mark">
+                    <MenuItem Header="Select _all" InputGestureText="Ctrl+A" Command="{Binding SelectAllCommand}" />
+                    <MenuItem Header="_Unselect all" Command="{Binding UnselectAllCommand}" />
+                    <MenuItem Header="_Invert selection" InputGestureText="Num *" Command="{Binding InvertSelectionCommand}" />
+                    <Separator />
+                    <MenuItem Header="Select _group..." InputGestureText="Num +" Command="{Binding SelectGroupCommand}" />
+                    <MenuItem Header="Unselect g_roup..." InputGestureText="Num -" Command="{Binding UnselectGroupCommand}" />
+                    <Separator />
+                    <MenuItem Header="_Compare directories" Command="{Binding CompareDirectoriesCommand}" />
+                </MenuItem>
+
+                <MenuItem Header="_Commands">
+                    <MenuItem Header="_Find files..." InputGestureText="Alt+F7" Command="{Binding SearchCommand}" />
+                    <MenuItem Header="_Branch view" InputGestureText="Ctrl+B" Command="{Binding BranchViewCommand}" />
+                    <MenuItem Header="Calculate occupied _space" InputGestureText="Ctrl+L" Command="{Binding CalculateSpaceCommand}" />
+                    <Separator />
+                    <MenuItem Header="S_wap panes" InputGestureText="Ctrl+U" Command="{Binding SwapPanesCommand}" />
+                    <MenuItem Header="_Target = source" InputGestureText="Ctrl+Right" Command="{Binding TargetEqualsSourceCommand}" />
+                    <Separator />
+                    <MenuItem Header="Open _terminal here" Command="{Binding OpenTerminalCommand}" />
+                    <MenuItem Header="Show in _Explorer" Command="{Binding RevealInExplorerCommand}" />
+                    <Separator />
+                    <MenuItem Header="Add b_ookmark..." InputGestureText="Ctrl+D" Command="{Binding AddBookmarkCommand}" />
+                    <MenuItem Header="_Bookmarks" ItemsSource="{Binding Bookmarks}">
+                        <MenuItem.ItemContainerStyle>
+                            <Style TargetType="MenuItem" BasedOn="{StaticResource SC.MenuItem}">
+                                <Setter Property="Header" Value="{Binding Name}" />
+                                <Setter Property="InputGestureText" Value="{Binding Path}" />
+                                <Setter Property="CommandParameter" Value="{Binding}" />
+                                <Setter Property="Command"
+                                        Value="{Binding DataContext.GoToBookmarkCommand,
+                                                RelativeSource={RelativeSource AncestorType=Window}}" />
+                            </Style>
+                        </MenuItem.ItemContainerStyle>
+                    </MenuItem>
+                </MenuItem>
+
+                <MenuItem Header="_View">
+                    <MenuItem Header="_Theme">
+                        <MenuItem Header="_Dark slate" Command="{Binding SetThemeCommand}" CommandParameter="Dark"
+                                  IsCheckable="False"
+                                  IsChecked="{Binding Settings.Theme, Mode=OneWay,
+                                              Converter={StaticResource Conv.EqualsToBool}, ConverterParameter=Dark}" />
+                        <MenuItem Header="Classic _light" Command="{Binding SetThemeCommand}" CommandParameter="Light"
+                                  IsCheckable="False"
+                                  IsChecked="{Binding Settings.Theme, Mode=OneWay,
+                                              Converter={StaticResource Conv.EqualsToBool}, ConverterParameter=Light}" />
+                    </MenuItem>
+                    <Separator />
+                    <MenuItem Header="Show _hidden files" InputGestureText="Ctrl+H" Command="{Binding ToggleHiddenCommand}"
+                              IsChecked="{Binding Settings.ShowHiddenFiles, Mode=OneWay}" />
+                    <MenuItem Header="Quick _filter..." InputGestureText="Ctrl+S" Command="{Binding QuickFilterCommand}" />
+                    <Separator />
+                    <MenuItem Header="_Re-read" InputGestureText="Ctrl+R" Command="{Binding RefreshCommand}" />
+                    <Separator />
+                    <MenuItem Header="_New tab" InputGestureText="Ctrl+T" Command="{Binding NewTabCommand}" />
+                    <MenuItem Header="_Close tab" InputGestureText="Ctrl+W" Command="{Binding CloseTabCommand}" />
+                </MenuItem>
+
+                <MenuItem Header="C_onfiguration">
+                    <MenuItem Header="_Settings..." Command="{Binding SettingsCommand}" />
+                </MenuItem>
+
+                <MenuItem Header="_Help">
+                    <MenuItem Header="_Keyboard reference and about" InputGestureText="F1" Command="{Binding AboutCommand}" />
+                </MenuItem>
+            </Menu>
+        </Border>
+
+        <!-- ============================ Panes ============================ -->
+        <Grid Grid.Row="1" Margin="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="LeftColumn" Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition x:Name="RightColumn" Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <local:FilePaneView x:Name="LeftPaneView" Grid.Column="0" DataContext="{Binding LeftPane}" />
+
+            <GridSplitter Grid.Column="1" Style="{StaticResource SC.GridSplitter}"
+                          HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+
+            <local:FilePaneView x:Name="RightPaneView" Grid.Column="2" DataContext="{Binding RightPane}" />
+        </Grid>
+
+        <!-- ========================= Command line ========================= -->
+        <Border x:Name="CommandLineHost" Grid.Row="2" Padding="8,4" Margin="4,0,4,4"
+                Background="{DynamicResource App.Surface}"
+                BorderBrush="{DynamicResource App.Border}" BorderThickness="1" CornerRadius="3">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,6,0"
+                           FontFamily="{DynamicResource Font.Mono}" FontSize="11"
+                           Foreground="{DynamicResource Accent}"
+                           Text="{Binding ActivePane.CurrentPath, StringFormat={}{0}&gt;}" />
+
+                <TextBox x:Name="CommandBox" Grid.Column="1" Style="{StaticResource SC.CommandLine}"
+                         Text="{Binding CommandLine, UpdateSourceTrigger=PropertyChanged}"
+                         KeyDown="OnCommandLineKeyDown" />
+            </Grid>
+        </Border>
+
+        <!-- ======================= Function key bar ======================= -->
+        <Border x:Name="FunctionBarHost" Grid.Row="3" Padding="4,0,4,4">
+            <UniformGrid Columns="8" Rows="1">
+                <Button x:Name="KeyF3" Style="{StaticResource SC.FunctionKey}" Content="F3 View"
+                        Click="OnFunctionKey" Tag="F3" />
+                <Button x:Name="KeyF4" Style="{StaticResource SC.FunctionKey}" Content="F4 Edit"
+                        Click="OnFunctionKey" Tag="F4" />
+                <Button x:Name="KeyF5" Style="{StaticResource SC.FunctionKey}" Content="F5 Copy"
+                        Click="OnFunctionKey" Tag="F5" />
+                <Button x:Name="KeyF6" Style="{StaticResource SC.FunctionKey}" Content="F6 Move"
+                        Click="OnFunctionKey" Tag="F6" />
+                <Button x:Name="KeyF7" Style="{StaticResource SC.FunctionKey}" Content="F7 NewFolder"
+                        Click="OnFunctionKey" Tag="F7" />
+                <Button x:Name="KeyF8" Style="{StaticResource SC.FunctionKey}" Content="F8 Delete"
+                        Click="OnFunctionKey" Tag="F8" />
+                <Button x:Name="KeyF9" Style="{StaticResource SC.FunctionKey}" Content="Alt+F7 Find"
+                        Click="OnFunctionKey" Tag="F9" />
+                <Button x:Name="KeyF10" Style="{StaticResource SC.FunctionKey}" Content="Alt+F4 Exit"
+                        Click="OnFunctionKey" Tag="F10" />
+            </UniformGrid>
+        </Border>
+    </Grid>
+</dlg:ThemedWindow>

@@ -1,0 +1,23 @@
+<Application x:Class="SuperCommander.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:v="clr-namespace:SuperCommander.Views">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!--
+                    Index 0 is the live palette and is swapped at runtime by
+                    ThemeService. Do not reorder.
+                -->
+                <ResourceDictionary Source="Themes/Palette.Dark.xaml" />
+                <ResourceDictionary Source="Themes/Controls.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <BooleanToVisibilityConverter x:Key="Conv.BoolToVis" />
+            <v:InverseBoolToVisibilityConverter x:Key="Conv.InvBoolToVis" />
+            <v:NullToVisibilityConverter x:Key="Conv.NullToVis" />
+            <v:ByteSizeConverter x:Key="Conv.ByteSize" />
+            <v:EqualityToBoolConverter x:Key="Conv.EqualsToBool" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

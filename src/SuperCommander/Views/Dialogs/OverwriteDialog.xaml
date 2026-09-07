@@ -1,0 +1,83 @@
+<dlg:ThemedWindow x:Class="SuperCommander.Views.Dialogs.OverwriteDialog"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:dlg="clr-namespace:SuperCommander.Views.Dialogs"
+                  Title="File already exists"
+                  Width="620"
+                  SizeToContent="Height"
+                  ResizeMode="NoResize"
+                  ShowInTaskbar="False"
+                  WindowStartupLocation="CenterOwner">
+
+    <Border Background="{DynamicResource App.Surface}"
+            BorderBrush="{DynamicResource App.Border}" BorderThickness="1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0" Margin="22,20,22,16">
+                <TextBlock Style="{StaticResource SC.Label}" FontSize="14" FontWeight="SemiBold"
+                           Text="The target file already exists" Margin="0,0,0,4" />
+                <TextBlock x:Name="NameText" Style="{StaticResource SC.Label.Muted}"
+                           FontFamily="{DynamicResource Font.Mono}" FontSize="11"
+                           TextTrimming="CharacterEllipsis" Margin="0,0,0,16" />
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="16" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" CornerRadius="4" Padding="12,10"
+                            Background="{DynamicResource App.SurfaceAlt}"
+                            BorderBrush="{DynamicResource App.Border}" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SC.Label.Section}" Text="SOURCE" Margin="0,0,0,6" />
+                            <TextBlock x:Name="SourceSize" Style="{StaticResource SC.Label}" FontSize="11" />
+                            <TextBlock x:Name="SourceDate" Style="{StaticResource SC.Label.Muted}" FontSize="11" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="2" CornerRadius="4" Padding="12,10"
+                            Background="{DynamicResource App.SurfaceAlt}"
+                            BorderBrush="{DynamicResource App.Border}" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SC.Label.Section}" Text="TARGET" Margin="0,0,0,6" />
+                            <TextBlock x:Name="TargetSize" Style="{StaticResource SC.Label}" FontSize="11" />
+                            <TextBlock x:Name="TargetDate" Style="{StaticResource SC.Label.Muted}" FontSize="11" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </StackPanel>
+
+            <Border Grid.Row="1" Background="{DynamicResource App.SurfaceAlt}"
+                    BorderBrush="{DynamicResource App.Border}" BorderThickness="0,1,0,0"
+                    Padding="18,14">
+                <StackPanel>
+                    <UniformGrid Columns="3" Margin="0,0,0,8">
+                        <Button Style="{StaticResource SC.Button.Primary}" Content="Overwrite"
+                                Margin="0,0,8,0" Tag="Overwrite" Click="OnChoose" IsDefault="True" />
+                        <Button Style="{StaticResource SC.Button}" Content="Overwrite all"
+                                Margin="0,0,8,0" Tag="OverwriteAll" Click="OnChoose" />
+                        <Button Style="{StaticResource SC.Button}" Content="Overwrite older"
+                                Tag="OverwriteAllOlder" Click="OnChoose" />
+                    </UniformGrid>
+                    <UniformGrid Columns="3" Margin="0,0,0,8">
+                        <Button Style="{StaticResource SC.Button}" Content="Skip"
+                                Margin="0,0,8,0" Tag="Skip" Click="OnChoose" />
+                        <Button Style="{StaticResource SC.Button}" Content="Skip all"
+                                Margin="0,0,8,0" Tag="SkipAll" Click="OnChoose" />
+                        <Button Style="{StaticResource SC.Button}" Content="Keep both"
+                                Tag="Rename" Click="OnChoose" />
+                    </UniformGrid>
+                    <Button Style="{StaticResource SC.Button}" Content="Cancel operation"
+                            HorizontalAlignment="Right" MinWidth="150" IsCancel="True"
+                            Tag="Cancel" Click="OnChoose" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</dlg:ThemedWindow>

@@ -1,0 +1,144 @@
+<dlg:ThemedWindow x:Class="SuperCommander.Views.Dialogs.MultiRenameWindow"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:dlg="clr-namespace:SuperCommander.Views.Dialogs"
+                  Title="Multi-rename tool"
+                  Width="900" Height="640"
+                  MinWidth="680" MinHeight="460"
+                  WindowStartupLocation="CenterOwner">
+
+    <Grid Background="{DynamicResource App.Background}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="{DynamicResource App.Surface}"
+                BorderBrush="{DynamicResource App.Border}" BorderThickness="0,0,0,1"
+                Padding="18,16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="24" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock Style="{StaticResource SC.Label.Section}" Text="RENAME MASK" />
+
+                    <TextBlock Style="{StaticResource SC.Label.Muted}" FontSize="11" Text="File name" />
+                    <TextBox x:Name="NameMask" Style="{StaticResource SC.TextBox}"
+                             FontFamily="{DynamicResource Font.Mono}" Text="[N]"
+                             Margin="0,3,0,8" TextChanged="OnRuleChanged" />
+
+                    <TextBlock Style="{StaticResource SC.Label.Muted}" FontSize="11" Text="Extension" />
+                    <TextBox x:Name="ExtensionMask" Style="{StaticResource SC.TextBox}"
+                             FontFamily="{DynamicResource Font.Mono}" Text="[E]"
+                             Margin="0,3,0,8" TextChanged="OnRuleChanged" />
+
+                    <TextBlock Style="{StaticResource SC.Label.Muted}" FontSize="11" TextWrapping="Wrap"
+                               Text="[N] name  [N1-5] part of name  [E] extension  [C] counter  [P] parent folder  [Y][M][D] date  [h][m][s] time" />
+
+                    <Grid Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Style="{StaticResource SC.Label.Muted}" FontSize="11" Text="Start at" />
+                            <TextBox x:Name="CounterStart" Style="{StaticResource SC.TextBox}" Text="1"
+                                     Margin="0,3,0,0" TextChanged="OnRuleChanged" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Style="{StaticResource SC.Label.Muted}" FontSize="11" Text="Step" />
+                            <TextBox x:Name="CounterStep" Style="{StaticResource SC.TextBox}" Text="1"
+                                     Margin="0,3,0,0" TextChanged="OnRuleChanged" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="4">
+                            <TextBlock Style="{StaticResource SC.Label.Muted}" FontSize="11" Text="Digits" />
+                            <TextBox x:Name="CounterDigits" Style="{StaticResource SC.TextBox}" Text="1"
+                                     Margin="0,3,0,0" TextChanged="OnRuleChanged" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+
+                <StackPanel Grid.Column="2">
+                    <TextBlock Style="{StaticResource SC.Label.Section}" Text="SEARCH AND REPLACE" />
+
+                    <TextBlock Style="{StaticResource SC.Label.Muted}" FontSize="11" Text="Find" />
+                    <TextBox x:Name="SearchFor" Style="{StaticResource SC.TextBox}"
+                             Margin="0,3,0,8" TextChanged="OnRuleChanged" />
+
+                    <TextBlock Style="{StaticResource SC.Label.Muted}" FontSize="11" Text="Replace with" />
+                    <TextBox x:Name="ReplaceWith" Style="{StaticResource SC.TextBox}"
+                             Margin="0,3,0,8" TextChanged="OnRuleChanged" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <CheckBox x:Name="RegexCheck" Style="{StaticResource SC.CheckBox}"
+                                  Content="Regular expression" Margin="0,0,16,0" Click="OnRuleChanged" />
+                        <CheckBox x:Name="CaseCheck" Style="{StaticResource SC.CheckBox}"
+                                  Content="Match case" Click="OnRuleChanged" />
+                    </StackPanel>
+
+                    <TextBlock Style="{StaticResource SC.Label.Muted}" FontSize="11" Text="Letter case" />
+                    <ComboBox x:Name="CaseBox" Style="{StaticResource SC.ComboBox}" Margin="0,3,0,0"
+                              SelectionChanged="OnRuleChanged" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <ListView Grid.Row="1" x:Name="PreviewList" Style="{StaticResource SC.FileList}"
+                  Background="{DynamicResource App.Surface}">
+            <ListView.View>
+                <GridView ColumnHeaderContainerStyle="{StaticResource SC.ColumnHeader}">
+                    <GridViewColumn Header="Current name" Width="330">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding OldName}" Padding="6,2"
+                                           FontFamily="{DynamicResource Font.Mono}" FontSize="11"
+                                           TextTrimming="CharacterEllipsis" />
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                    <GridViewColumn Header="New name" Width="330">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding NewName}" Padding="6,2"
+                                           FontFamily="{DynamicResource Font.Mono}" FontSize="11"
+                                           TextTrimming="CharacterEllipsis" />
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                    <GridViewColumn Header="Status" Width="140">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Error}" Padding="6,2" FontSize="11"
+                                           Foreground="{DynamicResource Status.Bad}" />
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                </GridView>
+            </ListView.View>
+        </ListView>
+
+        <Border Grid.Row="2" Background="{DynamicResource App.SurfaceAlt}"
+                BorderBrush="{DynamicResource App.Border}" BorderThickness="0,1,0,0"
+                Padding="14,12">
+            <Grid>
+                <TextBlock x:Name="SummaryText" Style="{StaticResource SC.Label.Muted}" FontSize="11" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Style="{StaticResource SC.Button}" Content="Reset"
+                            Margin="0,0,10,0" Click="OnReset" />
+                    <Button Style="{StaticResource SC.Button}" Content="Cancel"
+                            IsCancel="True" Margin="0,0,10,0" Click="OnCancel" />
+                    <Button x:Name="ApplyButton" Style="{StaticResource SC.Button.Primary}"
+                            Content="Rename" IsDefault="True" Click="OnApply" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</dlg:ThemedWindow>

@@ -1,0 +1,128 @@
+<dlg:ThemedWindow x:Class="SuperCommander.Views.Dialogs.SearchWindow"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:dlg="clr-namespace:SuperCommander.Views.Dialogs"
+                  Title="Find files"
+                  Width="880" Height="640"
+                  MinWidth="620" MinHeight="440"
+                  WindowStartupLocation="CenterOwner">
+
+    <Grid Background="{DynamicResource App.Background}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Criteria -->
+        <Border Grid.Row="0" Background="{DynamicResource App.Surface}"
+                BorderBrush="{DynamicResource App.Border}" BorderThickness="0,0,0,1"
+                Padding="18,16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="20" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource SC.Label}"
+                           Text="File mask" Margin="0,0,12,8" />
+                <TextBox Grid.Row="0" Grid.Column="1" x:Name="MaskBox" Margin="0,0,0,8"
+                         Style="{StaticResource SC.TextBox}" Text="*.*" />
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource SC.Label}"
+                           Text="Search in" Margin="0,0,12,8" />
+                <TextBox Grid.Row="1" Grid.Column="1" x:Name="RootBox" Margin="0,0,0,8"
+                         Style="{StaticResource SC.TextBox}"
+                         FontFamily="{DynamicResource Font.Mono}" />
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Style="{StaticResource SC.Label}"
+                           Text="Containing" Margin="0,0,12,8" />
+                <TextBox Grid.Row="2" Grid.Column="1" x:Name="TextBox_Content" Margin="0,0,0,8"
+                         Style="{StaticResource SC.TextBox}" />
+
+                <WrapPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal">
+                    <CheckBox x:Name="SubdirsCheck" Style="{StaticResource SC.CheckBox}"
+                              Content="Subfolders" IsChecked="True" Margin="0,0,18,0" />
+                    <CheckBox x:Name="CaseCheck" Style="{StaticResource SC.CheckBox}"
+                              Content="Match case" Margin="0,0,18,0" />
+                    <CheckBox x:Name="WordsCheck" Style="{StaticResource SC.CheckBox}"
+                              Content="Whole words" Margin="0,0,18,0" />
+                    <CheckBox x:Name="RegexCheck" Style="{StaticResource SC.CheckBox}"
+                              Content="Regular expression" Margin="0,0,18,0" />
+                    <CheckBox x:Name="HiddenCheck" Style="{StaticResource SC.CheckBox}"
+                              Content="Hidden files" />
+                </WrapPanel>
+
+                <StackPanel Grid.Row="0" Grid.RowSpan="4" Grid.Column="3" VerticalAlignment="Top">
+                    <Button x:Name="StartButton" Style="{StaticResource SC.Button.Primary}"
+                            Content="Start search" Margin="0,0,0,8" Click="OnStart" IsDefault="True" />
+                    <Button x:Name="StopButton" Style="{StaticResource SC.Button}"
+                            Content="Stop" Margin="0,0,0,8" IsEnabled="False" Click="OnStop" />
+                    <Button Style="{StaticResource SC.Button}" Content="Clear" Click="OnClear" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Results -->
+        <ListBox Grid.Row="1" x:Name="ResultsList" BorderThickness="0"
+                 Background="{DynamicResource App.Surface}"
+                 Foreground="{DynamicResource App.Text}"
+                 FontFamily="{DynamicResource Font.Mono}" FontSize="11"
+                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                 VirtualizingPanel.IsVirtualizing="True"
+                 VirtualizingPanel.VirtualizationMode="Recycling"
+                 MouseDoubleClick="OnResultActivated"
+                 KeyDown="OnResultsKeyDown">
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="Padding" Value="10,3" />
+                    <Setter Property="Foreground" Value="{DynamicResource App.Text}" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ListBoxItem">
+                                <Border x:Name="Bd" Background="Transparent" Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bd" Property="Background"
+                                                Value="{DynamicResource Row.Hover}" />
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter TargetName="Bd" Property="Background"
+                                                Value="{DynamicResource Accent}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource Accent.Text}" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </ListBox.ItemContainerStyle>
+        </ListBox>
+
+        <!-- Footer -->
+        <Border Grid.Row="2" Background="{DynamicResource App.SurfaceAlt}"
+                BorderBrush="{DynamicResource App.Border}" BorderThickness="0,1,0,0"
+                Padding="14,10">
+            <Grid>
+                <TextBlock x:Name="StatusText" Style="{StaticResource SC.Label.Muted}"
+                           FontSize="11" TextTrimming="CharacterEllipsis" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Style="{StaticResource SC.Button}" Content="Go to file"
+                            Margin="0,0,10,0" Click="OnGoToFile" />
+                    <Button Style="{StaticResource SC.Button}" Content="Close"
+                            IsCancel="True" Click="OnClose" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</dlg:ThemedWindow>
