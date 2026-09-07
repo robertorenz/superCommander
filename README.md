@@ -78,7 +78,16 @@ is the base framework plus direct Win32/COM interop.
 
 Every dialog is a themed modal window — the app never calls `MessageBox`.
 
-![New folder dialog](docs/screenshot-dialog.png)
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshot-viewer.png" alt="Internal viewer in hex mode"><br><em>The internal viewer, auto-switched to hex for a binary file</em></td>
+<td width="50%"><img src="docs/screenshot-search.png" alt="Find files"><br><em>Find files, with content search</em></td>
+</tr>
+<tr>
+<td><img src="docs/screenshot-overwrite.png" alt="Overwrite conflict dialog"><br><em>The conflict dialog during a copy</em></td>
+<td><img src="docs/screenshot-dialog.png" alt="New folder dialog"><br><em>Every prompt follows the palette</em></td>
+</tr>
+</table>
 
 ---
 
