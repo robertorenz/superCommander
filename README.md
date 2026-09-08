@@ -275,6 +275,23 @@ Either way you end up with `run\SuperCommander.exe`. The binary is not committed
 
 There are no NuGet packages to restore.
 
+### Tests
+
+```
+dotnet run --project tests/SuperCommander.Tests/SuperCommander.Tests.csproj
+```
+
+95 assertions over the archive layer, against a real filesystem rather than
+mocks: every format round-trips byte-identically (SHA-256 over a 2 MB payload),
+nested trees survive, selective extraction takes only what was asked for, flat
+entry lists browse as folder trees, `../` and absolute-path escapes are both
+refused, and `.msi` and `.chm` are held out of the archive set so `Enter` still
+runs them rather than browsing them.
+
+The runner is a plain console app rather than a test framework, so the repository
+keeps its no-package property. It prints one line per assertion and exits
+non-zero if any fail.
+
 ---
 
 ## Architecture
@@ -282,6 +299,7 @@ There are no NuGet packages to restore.
 ```
 publish.cmd                    Build and refresh run\SuperCommander.exe
 run/                           Somewhere to keep a built exe (binary not committed)
+tests/SuperCommander.Tests/    95 assertions over the archive layer
 src/SuperCommander/
 ├── App.xaml(.cs)              Startup, theme bootstrap, crash logging
 ├── Interop/
