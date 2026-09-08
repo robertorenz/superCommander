@@ -351,8 +351,9 @@ alongside the on-screen error dialog.
 ## Known limits
 
 - The formats in the **7-Zip row above need 7-Zip installed.** Without it they
-  are still recognised and coloured as archives, and opening one explains what to
-  install rather than failing obscurely. `.zip` and the tar family never need it.
+  are still recognised and coloured as archives, and `Enter` hands them to
+  whichever application is registered for them; `Alt+F9`, or typing the archive
+  path, says what to install. `.zip` and the tar family never need it.
 - **Creating** an archive is limited to what a provider can write: `.zip`,
   `.tar`, `.tar.gz`, and `.7z`/`.xz`/`.bz2`/`.wim` with 7-Zip present. RAR
   stays read-only.

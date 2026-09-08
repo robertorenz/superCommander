@@ -226,12 +226,6 @@ public sealed class FileItem : INotifyPropertyChanged
         return FileKind.Normal;
     }
 
-    public static bool IsArchiveExtension(string path)
-    {
-        var ext = Path.GetExtension(path);
-        return !string.IsNullOrEmpty(ext) && ArchiveExtensions.Contains(ext);
-    }
-
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private void OnPropertyChanged([CallerMemberName] string? name = null) =>

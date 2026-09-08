@@ -323,10 +323,18 @@ public sealed class FilePaneViewModel : ObservableObject
 
         if (!Directory.Exists(path))
         {
-            // Entering an archive by typing its path.
+            // Typing an archive path is an explicit "browse this", so an
+            // unreadable format explains itself here rather than falling back to
+            // the shell the way Enter does.
             if (File.Exists(path) && ArchiveService.IsSupported(path))
             {
-                await EnterArchiveAsync(path);
+                if (ArchiveService.IsReadable(path))
+                {
+                    await EnterArchiveAsync(path);
+                    return;
+                }
+
+                ErrorText = ArchiveService.UnavailableReason(path)!;
                 return;
             }
 
@@ -465,13 +473,21 @@ public sealed class FilePaneViewModel : ObservableObject
             return true;
         }
 
-        if (ArchiveService.IsSupported(item.FullPath))
+        // Only browse an archive that can actually be read. A recognised format
+        // whose provider is missing goes to whatever is registered for it - the
+        // behaviour before there were providers - rather than to an empty pane.
+        if (ArchiveService.IsReadable(item.FullPath))
         {
             await EnterArchiveAsync(item.FullPath);
             return true;
         }
 
-        return ShellServices.Open(item.FullPath, CurrentPath);
+        if (ShellServices.Open(item.FullPath, CurrentPath)) return true;
+
+        // Nothing was registered for it either. If it is an archive, say what
+        // would have made it browsable instead of failing silently.
+        if (ArchiveService.UnavailableReason(item.FullPath) is { } reason) ErrorText = reason;
+        return false;
     }
 
     public async Task EnterArchiveAsync(string zipPath)

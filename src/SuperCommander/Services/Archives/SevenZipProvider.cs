@@ -18,18 +18,20 @@ public sealed class SevenZipProvider : IArchiveProvider
     private static readonly Lazy<string?> Executable = new(Locate);
 
     // Formats 7-Zip reads that the native providers do not cover.
+    //
+    // .msi and .chm are deliberately absent. 7-Zip opens both, but they are
+    // things a user double-clicks to run, not to browse, and swallowing Enter on
+    // an installer is worse than never offering to look inside it.
     private static readonly string[] ReadExtensions =
     {
         ".7z", ".rar", ".cab", ".iso", ".arj", ".lzh", ".lha", ".xz", ".bz2", ".tbz", ".tbz2",
-        ".txz", ".lzma", ".z", ".taz", ".cpio", ".wim", ".swm", ".rpm", ".deb", ".dmg", ".chm", ".msi"
+        ".txz", ".lzma", ".z", ".taz", ".cpio", ".wim", ".swm", ".rpm", ".deb", ".dmg"
     };
 
     // 7-Zip can only create a subset; RAR in particular is read-only.
     private static readonly string[] WriteExtensions = { ".7z", ".xz", ".bz2", ".wim" };
 
     public string Name => "7-Zip";
-
-    public string? Path7z => Executable.Value;
 
     public bool IsAvailable => Executable.Value is not null;
 

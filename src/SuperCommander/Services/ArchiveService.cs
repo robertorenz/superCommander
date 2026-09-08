@@ -21,8 +21,6 @@ public static class ArchiveService
         new SevenZipProvider()
     };
 
-    public static IReadOnlyList<IArchiveProvider> All => Providers;
-
     public static IArchiveProvider? Find(string path) =>
         Providers.FirstOrDefault(p => p.CanHandle(path));
 
