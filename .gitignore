@@ -55,6 +55,9 @@ Desktop.ini
 $RECYCLE.BIN/
 .DS_Store
 
+## Personal Claude Code scope for this project (paths are machine-specific)
+.claude/settings.local.json
+
 ## Local run folder - keep the note, never the 57 MB binary
 run/*
 !run/README.md

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Windows;
 using SuperCommander.Models;
 using SuperCommander.Services;
+using SuperCommander.Services.Archives;
 
 namespace SuperCommander.Views.Dialogs;
 
@@ -78,7 +79,7 @@ public partial class ProgressDialog : ThemedWindow
         UpdateSpeed(progress.BytesDone, progress.BytesTotal);
     }
 
-    public void Update(ArchiveService.ArchiveProgress progress)
+    public void Update(ArchiveProgress progress)
     {
         SourceText.Text = progress.CurrentEntry;
         TargetText.Text = string.Empty;

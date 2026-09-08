@@ -1,11 +1,11 @@
 using System.Collections.ObjectModel;
 using System.IO;
-using System.IO.Compression;
 using System.Windows;
 using System.Windows.Interop;
 using SuperCommander.Interop;
 using SuperCommander.Models;
 using SuperCommander.Services;
+using SuperCommander.Services.Archives;
 using SuperCommander.Services.Ftp;
 using SuperCommander.Views;
 using SuperCommander.Views.Dialogs;
@@ -949,7 +949,7 @@ public sealed class MainViewModel : ObservableObject
 
     private sealed class ArchiveRun
     {
-        public required IProgress<ArchiveService.ArchiveProgress> Progress { get; init; }
+        public required IProgress<ArchiveProgress> Progress { get; init; }
         public required CancellationToken Token { get; init; }
     }
 
@@ -959,7 +959,7 @@ public sealed class MainViewModel : ObservableObject
         using var cts = new CancellationTokenSource();
         dialog.Cancelled += (_, _) => cts.Cancel();
 
-        var progress = new Progress<ArchiveService.ArchiveProgress>(p => dialog.Update(p));
+        var progress = new Progress<ArchiveProgress>(p => dialog.Update(p));
 
         SetBusy(true);
         dialog.Show();
@@ -1000,8 +1000,7 @@ public sealed class MainViewModel : ObservableObject
         var baseDirectory = ActivePane.CurrentPath;
 
         await RunArchiveAsync("Packing files", run =>
-            ArchiveService.PackAsync(sources, answer, baseDirectory, CompressionLevel.Optimal,
-                run.Progress, run.Token));
+            ArchiveService.PackAsync(sources, answer, baseDirectory, run.Progress, run.Token));
     }
 
     private async Task UnpackAsync()

@@ -1,84 +1,138 @@
 using System.IO;
 using System.IO.Compression;
 using SuperCommander.Models;
+using SuperCommander.Services.Archives;
 
 namespace SuperCommander.Services;
 
 /// <summary>
-/// ZIP support: browse in place, pack and unpack. Other archive formats are
-/// handed to their registered application instead of being opened here.
+/// Front door for archive support. Picks a provider by extension and presents
+/// the flat entry list as a browsable folder tree.
+///
+/// ZIP and TAR/GZ are handled by the base framework; everything else is offered
+/// to an installed 7-Zip, which is optional.
 /// </summary>
 public static class ArchiveService
 {
-    public static bool IsSupported(string path) =>
-        string.Equals(Path.GetExtension(path), ".zip", StringComparison.OrdinalIgnoreCase);
+    private static readonly IArchiveProvider[] Providers =
+    {
+        new ZipArchiveProvider(),
+        new TarArchiveProvider(),
+        new SevenZipProvider()
+    };
+
+    public static IReadOnlyList<IArchiveProvider> All => Providers;
+
+    public static IArchiveProvider? Find(string path) =>
+        Providers.FirstOrDefault(p => p.CanHandle(path));
+
+    /// <summary>True when some provider recognises the extension.</summary>
+    public static bool IsSupported(string path) => Find(path) is not null;
+
+    /// <summary>True when the format can be read right now (7-Zip present, etc.).</summary>
+    public static bool IsReadable(string path) => Find(path) is { IsAvailable: true };
+
+    public static bool CanCreate(string path) => Find(path) is { } p && p.IsAvailable && p.CanCreate(path);
+
+    /// <summary>Explains why a recognised format cannot be opened, or null.</summary>
+    public static string? UnavailableReason(string path) => Find(path)?.UnavailableReason;
+
+    /// <summary>Extensions the app can create, for the pack dialog hint.</summary>
+    public static string CreatableExtensions =>
+        string.Join(", ", Providers.Where(p => p.IsAvailable)
+            .SelectMany(p => new[] { ".zip", ".tar", ".tar.gz", ".7z" }.Where(p.CanCreate))
+            .Distinct());
 
     // ------------------------------------------------------------- browsing
 
     /// <summary>
-    /// Lists the immediate children of <paramref name="internalDirectory"/> inside a zip.
-    /// Pass an empty string for the archive root.
+    /// Lists the immediate children of <paramref name="internalDirectory"/> inside
+    /// an archive. Pass an empty string for the archive root.
     /// </summary>
-    public static List<FileItem> ListEntries(string zipPath, string internalDirectory, out string? error)
+    public static List<FileItem> ListEntries(string archivePath, string internalDirectory, out string? error)
     {
         error = null;
         var items = new List<FileItem>();
 
         // ".." always walks out - either up a level or back to the filesystem.
         items.Add(FileItem.CreateParent(internalDirectory.Length == 0
-            ? Path.GetDirectoryName(zipPath) ?? zipPath
+            ? Path.GetDirectoryName(archivePath) ?? archivePath
             : ParentOf(internalDirectory)));
 
+        var provider = Find(archivePath);
+        if (provider is null)
+        {
+            error = $"\"{Path.GetFileName(archivePath)}\" is not a supported archive.";
+            return items;
+        }
+
+        if (!provider.IsAvailable)
+        {
+            error = provider.UnavailableReason;
+            return items;
+        }
+
+        List<ArchiveEntryInfo> entries;
         try
         {
-            using var archive = ZipFile.OpenRead(zipPath);
-
-            var prefix = internalDirectory.Length == 0 ? string.Empty : internalDirectory.TrimEnd('/') + "/";
-            var directories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var entry in archive.Entries)
-            {
-                var full = entry.FullName.Replace('\\', '/');
-                if (!full.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
-
-                var relative = full[prefix.Length..];
-                if (relative.Length == 0) continue;
-
-                int slash = relative.IndexOf('/');
-                if (slash >= 0)
-                {
-                    // Nested - surface the intermediate folder once.
-                    var folder = relative[..slash];
-                    if (folder.Length > 0 && directories.Add(folder))
-                    {
-                        items.Add(new FileItem(
-                            Path.Combine(zipPath, prefix + folder),
-                            folder, isDirectory: true, FileItem.SizeUnknown,
-                            entry.LastWriteTime.LocalDateTime, entry.LastWriteTime.LocalDateTime,
-                            FileAttributes.Directory)
-                        {
-                            ArchiveEntryPath = prefix + folder
-                        });
-                    }
-                    continue;
-                }
-
-                // An explicit directory entry ends with '/', already handled above.
-                if (entry.Name.Length == 0) continue;
-
-                items.Add(new FileItem(
-                    Path.Combine(zipPath, full),
-                    entry.Name, isDirectory: false, entry.Length,
-                    entry.LastWriteTime.LocalDateTime, entry.LastWriteTime.LocalDateTime,
-                    FileAttributes.Normal)
-                {
-                    ArchiveEntryPath = full
-                });
-            }
+            entries = provider.List(archivePath);
         }
         catch (Exception ex)
         {
             error = ex.Message;
+            return items;
+        }
+
+        var prefix = internalDirectory.Length == 0 ? string.Empty : internalDirectory.TrimEnd('/') + "/";
+        var directories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var entry in entries)
+        {
+            var full = entry.FullName.Replace('\\', '/');
+            if (!full.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+
+            var relative = full[prefix.Length..];
+            if (relative.Length == 0) continue;
+
+            int slash = relative.IndexOf('/');
+            if (slash >= 0)
+            {
+                // Nested - surface the intermediate folder once.
+                var folder = relative[..slash];
+                if (folder.Length > 0 && directories.Add(folder))
+                {
+                    items.Add(new FileItem(
+                        Path.Combine(archivePath, prefix + folder),
+                        folder, isDirectory: true, FileItem.SizeUnknown,
+                        entry.LastWriteTime, entry.LastWriteTime, FileAttributes.Directory)
+                    {
+                        ArchiveEntryPath = prefix + folder
+                    });
+                }
+                continue;
+            }
+
+            if (entry.IsDirectory)
+            {
+                if (!directories.Add(relative)) continue;
+
+                items.Add(new FileItem(
+                    Path.Combine(archivePath, full),
+                    relative, isDirectory: true, FileItem.SizeUnknown,
+                    entry.LastWriteTime, entry.LastWriteTime, FileAttributes.Directory)
+                {
+                    ArchiveEntryPath = full
+                });
+                continue;
+            }
+
+            items.Add(new FileItem(
+                Path.Combine(archivePath, full),
+                relative, isDirectory: false, entry.Length,
+                entry.LastWriteTime, entry.LastWriteTime, FileAttributes.Normal)
+            {
+                ArchiveEntryPath = full
+            });
         }
 
         return items;
@@ -91,215 +145,99 @@ public static class ArchiveService
         return slash < 0 ? string.Empty : trimmed[..slash];
     }
 
-    // --------------------------------------------------------------- packing
+    // -------------------------------------------------------- pack / unpack
 
-    public sealed class ArchiveProgress
+    public static Task<FileOperationResult> PackAsync(IReadOnlyList<string> sources, string archivePath,
+        string baseDirectory, IProgress<ArchiveProgress>? progress, CancellationToken token)
     {
-        public string CurrentEntry { get; set; } = string.Empty;
-        public int Done { get; set; }
-        public int Total { get; set; }
-        public double Percent => Total > 0 ? Done * 100.0 / Total : 0;
-    }
+        var provider = Find(archivePath);
 
-    /// <summary>Creates a zip from files and folders.</summary>
-    public static Task<FileOperationResult> PackAsync(IReadOnlyList<string> sources, string zipPath,
-        string baseDirectory, CompressionLevel level, IProgress<ArchiveProgress>? progress,
-        CancellationToken token) =>
-        Task.Run(() =>
+        if (provider is null || !provider.CanCreate(archivePath))
         {
-            var result = new FileOperationResult();
-            var report = new ArchiveProgress();
-
-            var files = new List<(string Source, string Entry)>();
-            foreach (var source in sources)
-            {
-                token.ThrowIfCancellationRequested();
-
-                if (Directory.Exists(source))
-                {
-                    foreach (var file in Directory.EnumerateFiles(source, "*", new EnumerationOptions
-                    {
-                        RecurseSubdirectories = true,
-                        IgnoreInaccessible = true,
-                        AttributesToSkip = 0
-                    }))
-                    {
-                        files.Add((file, Path.GetRelativePath(baseDirectory, file).Replace('\\', '/')));
-                    }
-                }
-                else if (File.Exists(source))
-                {
-                    files.Add((source, Path.GetRelativePath(baseDirectory, source).Replace('\\', '/')));
-                }
-            }
-
-            report.Total = files.Count;
-
-            try
-            {
-                var directory = Path.GetDirectoryName(zipPath);
-                if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-
-                using var stream = new FileStream(zipPath, FileMode.Create, FileAccess.Write, FileShare.None);
-                using var archive = new ZipArchive(stream, ZipArchiveMode.Create);
-
-                foreach (var (source, entryName) in files)
-                {
-                    if (token.IsCancellationRequested)
-                    {
-                        result.Cancelled = true;
-                        break;
-                    }
-
-                    report.CurrentEntry = entryName;
-                    progress?.Report(new ArchiveProgress
-                    {
-                        CurrentEntry = entryName,
-                        Done = report.Done,
-                        Total = report.Total
-                    });
-
-                    try
-                    {
-                        archive.CreateEntryFromFile(source, entryName, level);
-                        result.Succeeded++;
-                    }
-                    catch (Exception ex)
-                    {
-                        result.Failed++;
-                        result.Errors.Add($"{source}: {ex.Message}");
-                    }
-
-                    report.Done++;
-                }
-            }
-            catch (Exception ex)
-            {
-                result.Failed++;
-                result.Errors.Add(ex.Message);
-            }
-
-            progress?.Report(new ArchiveProgress { Done = report.Done, Total = report.Total });
-            return result;
-        }, token);
-
-    // ------------------------------------------------------------- unpacking
-
-    /// <summary>
-    /// Extracts a zip. When <paramref name="onlyEntries"/> is non-empty only those
-    /// entry paths are extracted, which is how F5 works inside an archive.
-    /// </summary>
-    public static Task<FileOperationResult> UnpackAsync(string zipPath, string targetDirectory,
-        IReadOnlyList<string>? onlyEntries, IProgress<ArchiveProgress>? progress, CancellationToken token) =>
-        Task.Run(() =>
-        {
-            var result = new FileOperationResult();
-
-            try
-            {
-                Directory.CreateDirectory(targetDirectory);
-                using var archive = ZipFile.OpenRead(zipPath);
-
-                var wanted = onlyEntries is { Count: > 0 }
-                    ? new HashSet<string>(onlyEntries.Select(e => e.Replace('\\', '/')), StringComparer.OrdinalIgnoreCase)
-                    : null;
-
-                var entries = archive.Entries
-                    .Where(e => e.Name.Length > 0)
-                    .Where(e => wanted is null || Matches(wanted, e.FullName.Replace('\\', '/')))
-                    .ToList();
-
-                int done = 0;
-                foreach (var entry in entries)
-                {
-                    if (token.IsCancellationRequested)
-                    {
-                        result.Cancelled = true;
-                        break;
-                    }
-
-                    progress?.Report(new ArchiveProgress
-                    {
-                        CurrentEntry = entry.FullName,
-                        Done = done,
-                        Total = entries.Count
-                    });
-
-                    try
-                    {
-                        var destination = SafeCombine(targetDirectory, entry.FullName);
-                        var directory = Path.GetDirectoryName(destination);
-                        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-
-                        entry.ExtractToFile(destination, overwrite: true);
-                        result.Succeeded++;
-                    }
-                    catch (Exception ex)
-                    {
-                        result.Failed++;
-                        result.Errors.Add($"{entry.FullName}: {ex.Message}");
-                    }
-
-                    done++;
-                }
-
-                progress?.Report(new ArchiveProgress { Done = done, Total = entries.Count });
-            }
-            catch (Exception ex)
-            {
-                result.Failed++;
-                result.Errors.Add(ex.Message);
-            }
-
-            return result;
-        }, token);
-
-    private static bool Matches(HashSet<string> wanted, string entryPath)
-    {
-        if (wanted.Contains(entryPath)) return true;
-
-        // A selected folder pulls in everything beneath it.
-        foreach (var w in wanted)
-        {
-            if (entryPath.StartsWith(w.TrimEnd('/') + "/", StringComparison.OrdinalIgnoreCase))
-                return true;
+            return Task.FromResult(Failure(
+                $"Creating \"{Path.GetExtension(archivePath)}\" archives is not supported. " +
+                $"Try one of: {CreatableExtensions}."));
         }
-        return false;
+
+        if (!provider.IsAvailable) return Task.FromResult(Failure(provider.UnavailableReason!));
+
+        return provider.CreateAsync(sources, archivePath, baseDirectory, progress, token);
     }
 
-    /// <summary>
-    /// Joins an entry name onto the target directory while refusing paths that
-    /// would escape it (zip slip).
-    /// </summary>
-    private static string SafeCombine(string targetDirectory, string entryName)
+    public static Task<FileOperationResult> UnpackAsync(string archivePath, string targetDirectory,
+        IReadOnlyList<string>? onlyEntries, IProgress<ArchiveProgress>? progress, CancellationToken token)
     {
-        var cleaned = entryName.Replace('/', Path.DirectorySeparatorChar);
-        var combined = Path.GetFullPath(Path.Combine(targetDirectory, cleaned));
-        var root = Path.GetFullPath(targetDirectory);
+        var provider = Find(archivePath);
 
-        if (!combined.StartsWith(root, StringComparison.OrdinalIgnoreCase))
-            throw new IOException($"Entry \"{entryName}\" would extract outside the target folder.");
+        if (provider is null)
+            return Task.FromResult(Failure($"\"{Path.GetFileName(archivePath)}\" is not a supported archive."));
 
-        return combined;
+        if (!provider.IsAvailable) return Task.FromResult(Failure(provider.UnavailableReason!));
+
+        return provider.ExtractAsync(archivePath, onlyEntries, targetDirectory, progress, token);
     }
 
-    /// <summary>Reads a single entry into memory - used by the internal viewer.</summary>
-    public static byte[]? ReadEntry(string zipPath, string entryPath, long maxBytes = 64 * 1024 * 1024)
+    private static FileOperationResult Failure(string message)
     {
+        var result = new FileOperationResult { Failed = 1 };
+        result.Errors.Add(message);
+        return result;
+    }
+
+    // ----------------------------------------------------------- single read
+
+    /// <summary>Reads one entry into memory - used by the internal viewer.</summary>
+    public static byte[]? ReadEntry(string archivePath, string entryPath, long maxBytes = 64 * 1024 * 1024)
+    {
+        var provider = Find(archivePath);
+        if (provider is null || !provider.IsAvailable) return null;
+
+        // ZIP can stream a single entry directly; everything else goes via a
+        // temporary extraction, which is still far cheaper than the whole archive.
+        if (provider is ZipArchiveProvider)
+        {
+            try
+            {
+                using var archive = ZipFile.OpenRead(archivePath);
+                var entry = archive.GetEntry(entryPath.Replace('\\', '/'));
+                if (entry is null || entry.Length > maxBytes) return null;
+
+                using var stream = entry.Open();
+                using var memory = new MemoryStream();
+                stream.CopyTo(memory);
+                return memory.ToArray();
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        var scratch = Path.Combine(Path.GetTempPath(), "SuperCommander", "view",
+            Guid.NewGuid().ToString("N"));
+
         try
         {
-            using var archive = ZipFile.OpenRead(zipPath);
-            var entry = archive.GetEntry(entryPath.Replace('\\', '/'));
-            if (entry is null || entry.Length > maxBytes) return null;
+            Directory.CreateDirectory(scratch);
 
-            using var stream = entry.Open();
-            using var memory = new MemoryStream();
-            stream.CopyTo(memory);
-            return memory.ToArray();
+            var result = provider.ExtractAsync(archivePath, new[] { entryPath }, scratch, null,
+                CancellationToken.None).GetAwaiter().GetResult();
+
+            if (result.Succeeded == 0) return null;
+
+            var extracted = Directory.EnumerateFiles(scratch, "*", SearchOption.AllDirectories).FirstOrDefault();
+            if (extracted is null) return null;
+
+            var info = new FileInfo(extracted);
+            return info.Length > maxBytes ? null : File.ReadAllBytes(extracted);
         }
         catch (Exception)
         {
             return null;
+        }
+        finally
+        {
+            try { Directory.Delete(scratch, recursive: true); } catch (Exception) { /* temp */ }
         }
     }
 }
