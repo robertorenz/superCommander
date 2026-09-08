@@ -291,6 +291,10 @@ public partial class MainWindow : ThemedWindow
                 Vm.RefreshCommand.Execute(null);
                 return true;
 
+            case Key.S when ctrl && shift:
+                Vm.SynchronizeCommand.Execute(null);
+                return true;
+
             case Key.S when ctrl:
                 Vm.QuickFilterCommand.Execute(null);
                 return true;

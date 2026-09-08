@@ -330,6 +330,18 @@ public sealed class FileOperationService
 
     // ---------------------------------------------------------------- transfer
 
+    /// <summary>
+    /// Copies one file for a caller that builds its own work list - the synchroniser
+    /// pairs each source with its own target rather than one shared folder. Byte
+    /// counts land in <paramref name="report"/>, so the progress contract is shared.
+    /// </summary>
+    public static void CopyOneFile(string source, string target, long size,
+        FileOperationProgress report, IProgress<FileOperationProgress>? progress, CancellationToken token) =>
+        CopyFile(source, target, size, report, progress, token);
+
+    /// <summary>Deletes one file outright, clearing a read-only bit first.</summary>
+    public static void DeleteOneFile(string path) => DeleteFile(path);
+
     private static void CopyFile(string source, string target, long size,
         FileOperationProgress report, IProgress<FileOperationProgress>? progress, CancellationToken token)
     {

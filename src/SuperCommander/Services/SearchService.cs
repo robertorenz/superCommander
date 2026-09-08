@@ -134,7 +134,8 @@ public static class SearchService
 
     // ------------------------------------------------------------ name masks
 
-    private static List<Regex> BuildMaskRegexes(string maskList)
+    /// <summary>Compiles a "*.cs;*.txt" mask list. An empty list means "everything".</summary>
+    public static List<Regex> BuildMaskRegexes(string maskList)
     {
         var regexes = new List<Regex>();
         var masks = maskList.Split(new[] { ';', ',' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -165,7 +166,8 @@ public static class SearchService
         return builder.ToString();
     }
 
-    private static bool MatchesMask(List<Regex> masks, string name)
+    /// <summary>Shared with the synchroniser, which filters on the same masks.</summary>
+    public static bool MatchesMask(List<Regex> masks, string name)
     {
         if (masks.Count == 0) return true;
         foreach (var mask in masks)

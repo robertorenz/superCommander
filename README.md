@@ -82,6 +82,7 @@ is the base framework plus direct Win32/COM interop.
 | Compare directories and mark what differs | `Mark` menu |
 | Quick filter and type-to-jump search | `Ctrl+S`, or just start typing |
 | Bookmarks | `Ctrl+D` |
+| Synchronize two trees, both ways or as a mirror | `Ctrl+Shift+S` |
 | Command line with `cd` and drive-letter handling | bottom of the window |
 
 ### Archives
@@ -110,6 +111,38 @@ entry lists.
 Every entry path passes through a shared `SafeCombine` before anything is
 written, so neither a `../` traversal nor an absolute path stored inside an
 archive can escape the target folder.
+
+### Synchronising
+
+`Ctrl+Shift+S` compares the two panes file by file and shows one row per name,
+with an arrow in the middle saying what pressing **Synchronize** would do.
+
+| Row | Meaning | Default |
+| --- | --- | --- |
+| `-->` | only on the left, or newer there | copy to the right |
+| `<--` | only on the right, or newer there | copy to the left |
+| `=` | same size, same timestamp | nothing |
+| `!=` | same timestamp, different size | nothing - you decide |
+
+A pair that cannot be resolved on the evidence is never resolved by guessing: it
+is shown as differing and left at "do nothing" until you pick a direction.
+
+- **Presets** set every row at once - *Both ways* (the newer file wins), *L to R*,
+  *R to L*, and *Mirror*, which makes the right an exact copy of the left and so
+  is the only preset that deletes anything.
+- **Per row**, `Ctrl+Right` / `Ctrl+Left` set a direction, `Space` skips, `Delete`
+  removes a file the other side does not have, and double-click cycles.
+- **Options**: a file mask, subfolders on or off, hidden files, *by content* -
+  which reads both files through instead of trusting the stamp - and *ignore
+  date*, which compares on size alone. Timestamps within two seconds count as
+  equal, because FAT stores them that way.
+- Filter buttons hide whole classes of row, so *Differing* alone answers "what
+  changed?" on a tree of 50,000 files.
+
+Copies go through the same engine as `F5`, so timestamps, attributes and the
+progress dialog are identical, and a missing folder on the target side is created
+on the way. Deletions are permanent - they do not go to the Recycle Bin - so the
+confirmation says so before anything runs.
 
 ### FTP
 
@@ -208,6 +241,7 @@ Press `F1` in the app for this list at any time.
 | `Alt+F5` / `Alt+F9` | Pack / unpack |
 | `Alt+F7` | Find files |
 | `Ctrl+M` | Multi-rename tool |
+| `Ctrl+Shift+S` | Synchronize the two folders |
 | `Alt+Enter` | Properties |
 
 ### Selection
@@ -281,12 +315,20 @@ There are no NuGet packages to restore.
 dotnet run --project tests/SuperCommander.Tests/SuperCommander.Tests.csproj
 ```
 
-95 assertions over the archive layer, against a real filesystem rather than
-mocks: every format round-trips byte-identically (SHA-256 over a 2 MB payload),
-nested trees survive, selective extraction takes only what was asked for, flat
-entry lists browse as folder trees, `../` and absolute-path escapes are both
-refused, and `.msi` and `.chm` are held out of the archive set so `Enter` still
-runs them rather than browsing them.
+138 assertions over the archive and synchronise layers, against a real
+filesystem rather than mocks: every format round-trips byte-identically (SHA-256
+over a 2 MB payload), nested trees survive, selective extraction takes only what
+was asked for, flat entry lists browse as folder trees, `../` and absolute-path
+escapes are both refused, and `.msi` and `.chm` are held out of the archive set
+so `Enter` still runs them rather than browsing them.
+
+The synchroniser is checked the same way: every comparison state on a real pair
+of trees, the two-second tolerance, mask, depth and hidden filters, content
+comparison catching an edit that keeps the length, and a run that copies into a
+folder the target lacks, overwrites, skips a vetoed row and deletes - then
+compares again to prove the result. One assertion loads the dialog itself against
+the app's own palette, so a mistyped style key fails here rather than in front of
+a user.
 
 The runner is a plain console app rather than a test framework, so the repository
 keeps its no-package property. It prints one line per assertion and exits
@@ -299,7 +341,7 @@ non-zero if any fail.
 ```
 publish.cmd                    Build and refresh run\SuperCommander.exe
 run/                           Somewhere to keep a built exe (binary not committed)
-tests/SuperCommander.Tests/    95 assertions over the archive layer
+tests/SuperCommander.Tests/    138 assertions over archives and synchronising
 src/SuperCommander/
 ├── App.xaml(.cs)              Startup, theme bootstrap, crash logging
 ├── Interop/
@@ -309,6 +351,7 @@ src/SuperCommander/
 │   └── ShellServices.cs       Icons, launching, recycle bin, clipboard, DWM
 ├── Models/
 │   ├── FileItem.cs            One row; also carries marked state and icon
+│   ├── SyncEntry.cs           One compared pair and the decision made about it
 │   └── AppSettings.cs         Everything persisted
 ├── Services/
 │   ├── DirectoryService.cs    Listing, natural sort, folder sizes, branch view
@@ -325,6 +368,7 @@ src/SuperCommander/
 │   ├── Ftp/FtpSession.cs      One connection bound to a panel
 │   ├── Ftp/FtpTransferService.cs  Up/download on the local progress contract
 │   ├── SearchService.cs       Mask, metadata and content search
+│   ├── SyncService.cs         Tree comparison, then the copies and deletes
 │   ├── MultiRenameService.cs  Pattern expansion and preview
 │   ├── DriveService.cs        Drive enumeration
 │   ├── SettingsService.cs     Atomic JSON load/save
@@ -375,6 +419,9 @@ alongside the on-screen error dialog.
 - **Creating** an archive is limited to what a provider can write: `.zip`,
   `.tar`, `.tar.gz`, and `.7z`/`.xz`/`.bz2`/`.wim` with 7-Zip present. RAR
   stays read-only.
+- **Synchronising is local only.** Both sides have to be real folders; a
+  connected server panel or an open archive is refused with a message rather
+  than half-working.
 - FTP is FTP/FTPS only. There is no SFTP (that is SSH, a completely different
   protocol) and no other network plugins.
 - The internal viewer loads the first 96 MB of very large files rather than

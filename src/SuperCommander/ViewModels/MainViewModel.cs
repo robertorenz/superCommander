@@ -169,6 +169,7 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand SwapPanesCommand { get; private set; } = null!;
     public RelayCommand TargetEqualsSourceCommand { get; private set; } = null!;
     public RelayCommand CompareDirectoriesCommand { get; private set; } = null!;
+    public RelayCommand SynchronizeCommand { get; private set; } = null!;
     public RelayCommand CalculateSpaceCommand { get; private set; } = null!;
     public RelayCommand BranchViewCommand { get; private set; } = null!;
     public RelayCommand SelectAllCommand { get; private set; } = null!;
@@ -215,6 +216,7 @@ public sealed class MainViewModel : ObservableObject
         SwapPanesCommand = new RelayCommand(() => _ = SwapPanesAsync());
         TargetEqualsSourceCommand = new RelayCommand(() => _ = TargetEqualsSourceAsync());
         CompareDirectoriesCommand = new RelayCommand(CompareDirectories);
+        SynchronizeCommand = new RelayCommand(OpenSynchronize);
         CalculateSpaceCommand = new RelayCommand(() => _ = ActivePane.CalculateSelectedFolderSizesAsync());
         BranchViewCommand = new RelayCommand(() => _ = ActivePane.ToggleBranchViewAsync());
         SelectAllCommand = new RelayCommand(() => ActivePane.MarkAll(true));
@@ -1062,6 +1064,31 @@ public sealed class MainViewModel : ObservableObject
     {
         ActivePane.MarkDifferences(InactivePane);
         InactivePane.MarkDifferences(ActivePane);
+    }
+
+    /// <summary>
+    /// Opens the synchroniser on the two panes. Both sides have to be real
+    /// folders - a server or an archive has no tree to walk twice.
+    /// </summary>
+    private void OpenSynchronize()
+    {
+        if (LeftPane.IsFtpMode || RightPane.IsFtpMode)
+        {
+            MessageDialog.ShowInfo(_window, "Synchronize",
+                "Both sides have to be local folders. Disconnect the server panel first.");
+            return;
+        }
+
+        if (LeftPane.IsArchiveMode || RightPane.IsArchiveMode)
+        {
+            MessageDialog.ShowInfo(_window, "Synchronize",
+                "Both sides have to be local folders, not the inside of an archive.");
+            return;
+        }
+
+        var window = new SyncWindow(LeftPane.CurrentPath, RightPane.CurrentPath) { Owner = _window };
+        window.ShowDialog();
+        if (window.Changed) _ = RefreshBothAsync();
     }
 
     private async Task ToggleHiddenAsync()

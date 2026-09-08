@@ -55,6 +55,8 @@
                     <MenuItem Header="Unselect g_roup..." InputGestureText="Num -" Command="{Binding UnselectGroupCommand}" />
                     <Separator />
                     <MenuItem Header="_Compare directories" Command="{Binding CompareDirectoriesCommand}" />
+                    <MenuItem Header="_Synchronize directories..." InputGestureText="Ctrl+Shift+S"
+                              Command="{Binding SynchronizeCommand}" />
                 </MenuItem>
 
                 <MenuItem Header="_Commands">

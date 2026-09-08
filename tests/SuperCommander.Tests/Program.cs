@@ -11,7 +11,7 @@ namespace SuperCommander.Tests;
 /// mocks. Deliberately not a test framework - the app has no package references
 /// and neither does this, so "dotnet run" is the whole story.
 /// </summary>
-internal static class Program
+internal static partial class Program
 {
     private static int _passed;
     private static int _failed;
@@ -38,6 +38,12 @@ internal static class Program
             ViewerReads(root);
             SlipRefused(root);
             PackFrontDoor(root);
+
+            SyncCompares(root);
+            SyncFilters(root);
+            SyncContent(root);
+            SyncApplies(root);
+            DialogLoads(root);
         }
         catch (Exception ex)
         {

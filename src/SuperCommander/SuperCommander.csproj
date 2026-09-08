@@ -15,7 +15,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
-    <Version>1.1.5</Version>
+    <Version>1.2.0</Version>
     <Product>SuperCommander</Product>
     <Company>SuperCommander</Company>
     <Description>Dual-pane orthodox file manager for Windows</Description>

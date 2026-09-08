@@ -40,6 +40,7 @@ public partial class AboutWindow : ThemedWindow
             ("Alt+F9", "Unpack an archive"),
             ("Alt+F7", "Find files"),
             ("Ctrl+M", "Multi-rename tool"),
+            ("Ctrl+Shift+S", "Synchronize the two folders"),
             ("Alt+Enter", "Properties")
         }),
         ("SELECTION", new[]
