@@ -73,8 +73,8 @@ is the base framework plus direct Win32/COM interop.
 | Feature | How to reach it |
 | --- | --- |
 | Internal viewer — text (5 encodings), hex dump, images | `F3` |
-| Browse *inside* a `.zip` as if it were a folder | `Enter` on the archive |
-| Pack to `.zip` / unpack | `Alt+F5` / `Alt+F9` |
+| Browse *inside* an archive as if it were a folder | `Enter` on the archive |
+| Pack to `.zip`, `.tar`, `.tar.gz` or `.7z`; unpack anything | `Alt+F5` / `Alt+F9` |
 | Find files by mask, size, date and **file contents** (literal or regex) | `Alt+F7` |
 | Multi-rename tool with live preview and `[N] [E] [C] [P] [Y][M][D]` patterns | `Ctrl+M` |
 | Branch view — every file below here, flattened | `Ctrl+B` |
@@ -83,6 +83,33 @@ is the base framework plus direct Win32/COM interop.
 | Quick filter and type-to-jump search | `Ctrl+S`, or just start typing |
 | Bookmarks | `Ctrl+D` |
 | Command line with `cd` and drive-letter handling | bottom of the window |
+
+### Archives
+
+Archive support is a set of providers behind one interface. The first that
+recognises the extension handles the file, and browsing, packing, unpacking and
+the `F3` viewer then work identically whichever one answered.
+
+| Provider | Reads | Creates | Needs |
+| --- | --- | --- | --- |
+| zip | `.zip` | `.zip` | nothing - base framework |
+| tar | `.tar`, `.tar.gz`, `.tgz`, `.gz` | `.tar`, `.tar.gz` | nothing - `System.Formats.Tar` |
+| 7-Zip | `.7z`, `.rar`, `.cab`, `.iso`, `.xz`, `.bz2`, `.wim`, `.deb`, `.rpm`, ... | `.7z`, `.xz`, `.bz2`, `.wim` | an installed 7-Zip |
+
+The first two are the base framework, so the zero-dependency property still
+holds. The third is **optional, not a dependency**: when `7z.exe` is absent the
+provider reports itself unavailable and the app says what to install instead of
+failing obscurely. RAR is correctly read-only - 7-Zip cannot write it.
+
+`Alt+F5` takes the format from the extension you type, so renaming the suggested
+`backup.zip` to `backup.tar.gz` is the whole interaction; the dialog lists what
+can be created. `Alt+F9` extracts anything a provider can read, and `Enter` walks
+into an archive as a folder tree even though the formats underneath are flat
+entry lists.
+
+Every entry path passes through a shared `SafeCombine` before anything is
+written, so neither a `../` traversal nor an absolute path stored inside an
+archive can escape the target folder.
 
 ### FTP
 
@@ -268,7 +295,13 @@ src/SuperCommander/
 ├── Services/
 │   ├── DirectoryService.cs    Listing, natural sort, folder sizes, branch view
 │   ├── FileOperationService.cs Threaded copy/move/delete with conflict callback
-│   ├── ArchiveService.cs      Zip browse, pack, unpack (zip-slip guarded)
+│   ├── ArchiveService.cs      Picks a provider, entries as a folder tree
+│   ├── Archives/
+│   │   ├── IArchiveProvider.cs   List, extract and create for one family
+│   │   ├── ArchivePath.cs        Shared zip-slip containment
+│   │   ├── ZipArchiveProvider.cs .zip, base framework
+│   │   ├── TarArchiveProvider.cs .tar/.tar.gz/.tgz/.gz, base framework
+│   │   └── SevenZipProvider.cs   .7z, .rar and the rest, via 7-Zip
 │   ├── Ftp/FtpClient.cs       FTP/FTPS over raw sockets, passive mode
 │   ├── Ftp/FtpListParser.cs   MLSD, plus Unix and DOS LIST fallbacks
 │   ├── Ftp/FtpSession.cs      One connection bound to a panel
@@ -317,9 +350,12 @@ alongside the on-screen error dialog.
 
 ## Known limits
 
-- Archive **browsing, packing and unpacking is `.zip` only.** Other formats
-  (`.7z`, `.rar`, …) are recognised and coloured as archives, and open with
-  whichever application is registered for them.
+- The formats in the **7-Zip row above need 7-Zip installed.** Without it they
+  are still recognised and coloured as archives, and opening one explains what to
+  install rather than failing obscurely. `.zip` and the tar family never need it.
+- **Creating** an archive is limited to what a provider can write: `.zip`,
+  `.tar`, `.tar.gz`, and `.7z`/`.xz`/`.bz2`/`.wim` with 7-Zip present. RAR
+  stays read-only.
 - FTP is FTP/FTPS only. There is no SFTP (that is SSH, a completely different
   protocol) and no other network plugins.
 - The internal viewer loads the first 96 MB of very large files rather than

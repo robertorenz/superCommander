@@ -991,10 +991,15 @@ public sealed class MainViewModel : ObservableObject
         var suggestion = Path.Combine(InactivePane.IsArchiveMode ? ActivePane.CurrentPath : InactivePane.CurrentPath, defaultName);
 
         var answer = InputDialog.Show(_window, "Pack files",
-            $"Pack {selection.Count} item(s) into:", suggestion, okText: "Pack", selectFileNameOnly: true);
+            $"Pack {selection.Count} item(s) into:", suggestion, okText: "Pack", selectFileNameOnly: true,
+            hint: $"Change the extension to pick the format: {ArchiveService.CreatableExtensions}");
         if (string.IsNullOrWhiteSpace(answer)) return;
 
-        if (!answer.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) answer += ".zip";
+        // Whatever format the name asks for is honoured. Only a name with no
+        // archive extension at all falls back to .zip; a recognised but
+        // read-only format such as .rar is left for PackAsync to explain,
+        // rather than quietly producing a .rar.zip.
+        if (!ArchiveService.IsSupported(answer)) answer += ".zip";
 
         var sources = selection.Select(i => i.FullPath).ToList();
         var baseDirectory = ActivePane.CurrentPath;
@@ -1005,30 +1010,31 @@ public sealed class MainViewModel : ObservableObject
 
     private async Task UnpackAsync()
     {
-        string? zip = null;
+        string? archive = null;
 
-        if (ActivePane.IsArchiveMode) zip = ActivePane.ActiveTab.ArchivePath;
+        if (ActivePane.IsArchiveMode) archive = ActivePane.ActiveTab.ArchivePath;
         else
         {
             var item = ActivePane.SelectedItem;
             if (item is not null && !item.IsDirectory && ArchiveService.IsSupported(item.FullPath))
-                zip = item.FullPath;
+                archive = item.FullPath;
         }
 
-        if (zip is null)
+        if (archive is null)
         {
-            MessageDialog.ShowInfo(_window, "Unpack", "Select a .zip archive first.");
+            MessageDialog.ShowInfo(_window, "Unpack", "Select an archive first.");
             return;
         }
 
         var suggestion = InactivePane.IsArchiveMode ? ActivePane.CurrentPath : InactivePane.CurrentPath;
         var answer = InputDialog.Show(_window, "Unpack",
-            $"Extract \"{Path.GetFileName(zip)}\" to:", suggestion, okText: "Extract");
+            $"Extract \"{Path.GetFileName(archive)}\" to:", suggestion, okText: "Extract");
         if (string.IsNullOrWhiteSpace(answer)) return;
 
         var target = answer;
+        var source = archive;
         await RunArchiveAsync("Extracting", run =>
-            ArchiveService.UnpackAsync(zip, target, null, run.Progress, run.Token));
+            ArchiveService.UnpackAsync(source, target, null, run.Progress, run.Token));
     }
 
     // -------------------------------------------------------------- utilities
