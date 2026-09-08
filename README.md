@@ -229,12 +229,22 @@ Run it:
 dotnet run --project src/SuperCommander/SuperCommander.csproj -c Release
 ```
 
-Or produce a self-contained single file:
+Or just use the helper, which builds and drops the executable in `run\`:
 
-```bash
-dotnet publish src/SuperCommander/SuperCommander.csproj -c Release -r win-x64 ^
-  --self-contained true -p:PublishSingleFile=true
 ```
+publish.cmd
+```
+
+That produces the self-contained single file, which runs on a machine with no
+.NET installed. Add `fd` for the small framework-dependent build instead:
+
+```
+publish.cmd fd
+```
+
+Either way you end up with `run\SuperCommander.exe`. The binary is not committed
+— released builds are attached to each
+[GitHub release](https://github.com/robertorenz/superCommander/releases).
 
 There are no NuGet packages to restore.
 
@@ -243,6 +253,8 @@ There are no NuGet packages to restore.
 ## Architecture
 
 ```
+publish.cmd                    Build and refresh run\SuperCommander.exe
+run/                           Somewhere to keep a built exe (binary not committed)
 src/SuperCommander/
 ├── App.xaml(.cs)              Startup, theme bootstrap, crash logging
 ├── Interop/

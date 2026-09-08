@@ -55,6 +55,10 @@ Desktop.ini
 $RECYCLE.BIN/
 .DS_Store
 
+## Local run folder - keep the note, never the 57 MB binary
+run/*
+!run/README.md
+
 ## App runtime state (settings live in %APPDATA%, but never commit local copies)
 settings.json.local
 *.log
